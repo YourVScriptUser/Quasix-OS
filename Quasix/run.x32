@@ -1,0 +1,30 @@
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; Skip past "run "
+ldi r0, inputbuf
+add r0, 4
+ldi r7, 0
+call qboot_load_ef_file
+cmp r0, 1
+je fnf
+clf
+push run_return
+jmp r6
+
+run_return:
+  clf
+  ret
+
+fnf:
+  ldi r0, run_file_not_found_msg
+  ldi r1, inputbuf
+  add r1, 4
+  ldi r4, 1
+  call printf
+  jmp run_return
+
+run_file_not_found_msg:  
+  db "run: File '~' not found", 0

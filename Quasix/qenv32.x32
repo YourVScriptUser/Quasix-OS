@@ -1,0 +1,866 @@
+origin 0x00010000
+; .ef format header
+db 0xAF, 0xFA
+dd 0x00010000
+
+; i lost my sanity righting this
+; procede with caution
+
+; I CANT FLIPPIN SPELL 
+; YEAH ITS SPELL 'RIGHTING' UH HUH YEP MHM THATS HOW ITS SPELT
+; GFHSABJASJDBGJGUWGIURNBERJUOIHGVEBUIOGVEHATUIAERLGHRIUGHREANJUKIREUJKGREANJKGHEAR
+
+kern_entp:
+jmp kern_startup
+
+excep_memory:
+  copy r4, r0
+  copy r5, r1
+  ; the exception return is inside kernel memory / journaler, that means the exception happened inside the kernel, cause a panic if that happens.
+  pop r0
+  push r1
+  ldi r1, 0x00020000
+  cmp r0, r1
+  copy r0, r4
+  copy r1, r5
+  jl panic
+  pop r1
+  push r0
+  ; r1 = faulting address (emulator does this)
+  call journal.erpref
+  copy r0, r1
+  ldi r1, text_pool
+  call hex_r0
+  ldi r1, text_pool
+  ldi r0, error_mem
+  ldi r4, 1
+  call printf 
+  jmp shell_loop ; If the error occoured in usermode, maybe GO BACK TO USERMODE INSTEAD OF RETURNING AT THE EXACT ADDRESS THAT THE ERROR OCCOURED
+  ; FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCCCCCCCCCCCCCCCCCKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
+
+excep_unknown_opcode:
+  copy r4, r0
+  copy r5, r1
+  ; the exception return is inside kernel memory / journaler, that means the exception happened inside the kernel, cause a panic if that happens.
+  pop r0
+  push r1
+  ldi r1, 0x00020000
+  cmp r0, r1
+  copy r0, r4
+  copy r1, r5
+  jl panic
+  pop r1
+  push r0
+  ; r1 = faulting address (emulator does this)
+  call journal.erpref
+  copy r0, r1
+  ldi r1, text_pool
+  call hex_r0
+  ldi r1, text_pool
+  ldi r0, error_unknown_op
+  ldi r4, 1
+  call printf 
+  jmp shell_loop ; If the error occoured in usermode, maybe GO BACK TO USERMODE INSTEAD OF RETURNING AT THE EXACT ADDRESS THAT THE ERROR OCCOURED
+  ; FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCCCCCCCCCCCCCCCCCKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
+
+panic:
+  push r1
+  push r0
+  call journal.erpref
+  pop r0  
+  ldi r1, error_msg_hex
+  call hex_r0
+  pop r0
+  ldi r1, ip_msg_hex
+  call hex_r0
+  ldi r0, panic_msg
+  ldi r1, ip_msg_hex
+  ldi r2, error_msg_hex
+  ldi r4, 0
+  call printf
+  PLZ_DIE:
+    cli
+    hlt
+    jmp PLZ_DIE
+  
+  
+; SO GENEROUS DD 
+; I AM GOING I N S A N E
+
+error_msg_hex:
+  dd 0, 0, 0, 0
+
+ip_msg_hex:
+  dd 0, 0, 0, 0
+  
+
+; Sets a block of memory
+; ptr r0: start of dest
+; arg r1: amount of bytes to write
+; arg r2: value to write
+memset:
+  jmp memset.loop
+
+memset.loop:
+  cmp r1, 0
+  je memset.end
+  wb [r0], r2
+  sub r1, 1
+  add r0, 1
+  jmp memset.loop
+
+memset.end:
+  clf
+  ret
+
+; Copies a block of memory
+; ptr r0: start of src
+; ptr r1: start of dest
+; arg r2: amount of bytes to copy
+memcpy:  
+  cmp r2, 0        ; edge case: r2 is null
+  je memcpy.end 
+  jmp memcpy.loop
+
+memcpy.loop:
+  cmp r2, 0
+  je memcpy.end
+  rb r3, [r0]
+  wb [r1], r3 
+  sub r2, 1
+  add r0, 1
+  add r1, 1
+  jmp memcpy.loop
+
+memcpy.end:
+  clf
+  ret
+
+; ptr r0: string a
+; ptr r1: string b
+; arg r2: terminator char
+; ret r0: result (1=same, 0=diff)
+strcmp:
+  jmp strcmp.loop  
+
+strcmp.loop:
+  rb r3, [r0]
+  rb r4, [r1]
+
+  cmp r3, r4
+  jne strcmp.wrong
+
+  cmp r3, r2
+  je strcmp.same
+
+  add r0, 1
+  add r1, 1
+  jmp strcmp.loop
+
+
+strcmp.wrong:
+  ldi r0, 0
+  jmp strcmp.end
+
+strcmp.same:
+  ldi r0, 1
+  jmp strcmp.end
+
+strcmp.end:
+  clf
+  ret
+
+;  System.Exceptions.InvalidOpcodeError.UnknownOpcode: 63
+;  System.Exceptions.InvalidOpcodeError.InvalidFlags:  62
+;  System.Exceptions.InvalidRegister:                  61
+;  System.Exceptions.InvalidMemoryWrite:               60
+;  System.Exceptions.UnknownError:                     59
+; (Pulled from emulator source code)
+setup_ivt:
+  ; group exceptions 61-63+59 together
+  ; TODO: add more exceptions fr
+
+  ldi r0, kernel_log3
+  ldi r1, 1
+  call journal.log
+
+  ; unknown opcode + heap of others
+  ldi r0, 63
+  mul r0, 4
+  ldi r1, excep_unknown_opcode
+  mov [r0], r1
+  ldi r0, 62
+  mul r0, 4
+  ldi r1, excep_unknown_opcode
+  mov [r0], r1
+  ldi r0, 61
+  mul r0, 4
+  ldi r1, excep_unknown_opcode
+  mov [r0], r1
+  ldi r0, 59
+  mul r0, 4
+  ldi r1, excep_unknown_opcode
+  mov [r0], r1
+  ldi r0, 60
+  mul r0, 4
+  ldi r1, excep_memory
+  mov [r0], r1
+
+  ret
+
+setup_pit:
+  ldi r0, kernel_log1
+  ldi r1, 3
+  call journal.log
+
+  ; PIT interrupt is interrupt 0x02 
+  ldi r0, 0x02
+  mul r0, 4 ; FIX: Was being multiplied by 2, but entries are dwords so 4 is proper.
+  ldi r1, kern_loop
+  mov [r0], r1
+
+  ; Interval is 1sec and interval port is port 0x02
+  ldi r0, 1
+  out r0, 0x02
+
+  ; Make sure it is not turned on
+  ldi r0, 0
+  out r0, 0x01
+  
+  ldi r0, kernel_log2
+  ldi r1, 3
+  call journal.log
+
+  ; Done, return
+  clf
+  ret
+
+; Tells video hardware to render a cursor
+enable_video_cursor:
+  push r0
+  ldi r0, 1
+  out r0, 0xDE 
+  pop r0
+  ret
+
+; Tells video hardware to not render a cursor
+disable_video_cursor:
+  push r0
+  ldi r0, 0
+  out r0, 0xDE 
+  pop r0
+  ret
+
+; ret r0: seconds
+get_time_since_boot:
+  push r1
+  ldi r1, kernel_clock_address
+  mov r0, [r1]
+  pop r1
+  ret
+
+kern_startup:
+  ; Read journal.cf file
+  ldi r0, log_file_msg
+  call early_print
+  ldi r0, log_file_name
+  ldi r7, 1
+  call qboot_load_ef_file
+  call early_newline
+
+  ; Initialize video
+  call get_next_video
+  ldi r1, console_cursor
+  ww  [r1], r0
+  
+  ldi r0, kernel_log0
+  ldi r1, 1
+  call journal.log
+
+  ; Populate the PIT timer
+  ; BIOS has no services for doing this, we must write our own driver
+  call setup_pit
+  call setup_ivt
+  
+  ; Now ready to start kern_loop
+  ldi r0, kernel_log4
+  ldi r1, 3
+  call journal.log
+
+  sti ; enable interrupts
+  
+  ldi r0, kernel_log5 
+  ldi r1, 1
+  call journal.log 
+
+  ldi r0, kernel_log6
+  ldi r1, 3
+  call journal.log
+
+  ; write 1 to ready port
+  ldi r0, 1
+  out r0, 0x01
+
+  ; wait for an interrupt, hopefully from the timer and not some chud pressing keys on their keyboard
+  sync_pit:
+  hlt
+  ; if the timer did not change (kern_loop does this), then repeat.
+  ldi r0, kernel_clock_address
+  mov r1, [r0]
+  cmp r1, 0
+  je sync_pit
+  clf
+
+  ; print status log
+  ldi r0, kernel_log7
+  ldi r1, 1
+  call journal.log
+ 
+  ; Extend video memory region using the end address port
+  ldi r0, 0x0B80FFFF
+  out r0, 0xDD
+
+  ; load the shell
+  ldi r0, shl_file_name
+  ldi r7, 0
+  call qboot_load_ef_file 
+  jmp r6
+
+; The main PIT interrupt handler
+; Run once a second, then does iret
+kern_loop:
+  call step_clock ; increment kernel clock
+  iret
+
+; Extracts bytes from the start of a string until it hits a specific byte, placing the chars before the special byte at a destination address. Destination string is terminated with a null byte.
+; ptr r0: src string
+; arg r1: special byte
+; ptr r2: dest string
+; arg r3: loop times (terminate if the loop count goes above this number)
+right_extract:
+  copy r4, r3
+  jmp right_extract.loop
+
+right_extract.loop:
+  ; Read current byte at src
+  rb r3, [r0]
+   
+  ; Compare against special byte
+  cmp r3, r1
+  je right_extract.end
+  clf
+
+  ; Check if we have hit the end
+  cmp r3, 0 
+  je right_extract.end
+
+  ; Append char to dest
+  wb [r2], r3
+
+  ; Change pointers
+  add r2, 1 
+  add r0, 1
+  sub r4, 1
+
+  ; Repeat
+  jmp right_extract.loop
+
+right_extract.end:
+  ; Put null terminator
+  add r2, 1
+  xor r3, r3
+  wb [r2], r3
+
+  clf
+  ret
+
+; Wipes video memory and resets the video cursor
+; It takes a while to finish but boo friggin who
+clearscreen:
+  ldi r0, VMEM
+  ldi r1, 0xFFFF
+  ldi r2, 0
+  call memset
+  ldi r0, 0
+  call write_console_cursor
+  ret
+
+; arg r0: main string
+; arg r1: string arg 1 ('~')
+; arg r2: string arg 2 ('^')
+; chc r4: newline
+; auto-ignores CR bytes
+printf:
+  push r0
+  push r1
+  push r2
+  push r4
+  copy r8,  r1
+  copy r9,  r2
+  copy r10, r4
+  copy r1,  r0
+  jmp printf.loop
+
+printf.arg1:
+  push r0
+  push r1
+  copy r0, r8
+  call strprint
+  pop r1
+  pop r0 
+  add r1, 1
+  jmp printf.loop
+
+printf.arg2:
+  push r0
+  push r1
+  copy r0, r9
+  call strprint
+  pop r1
+  pop r0 
+  add r1, 1
+  jmp printf.loop
+
+printf.skip:
+  add r1, 1
+  jmp printf.loop
+
+printf.loop:
+  rb r2, [r1]
+  cmp r2, 13 ; CR byte
+  je printf.skip
+  clf
+  cmp r2, 0
+  je printf.end
+  clf
+  cmp r2, '~'
+  je printf.arg1
+  clf
+  cmp r2, '^'  
+  je printf.arg2
+  clf
+  call read_console_cursor
+  cmp r0, 0x0B80FFFF
+  jh printf.overflow
+  wb [r0], r2
+  add r1, 1
+  call increment_console_cursor
+  jmp printf.loop
+
+printf.overflow:
+  push r1
+  push r2
+  push r3
+  call clearscreen
+  pop r3
+  pop r2
+  pop r1
+  jmp printf.loop
+  
+
+printf.end:
+  cmp r10, 1
+  je printf.newline_internal
+  pop r4
+  pop r2 
+  pop r1
+  pop r0
+  clf 
+  ret
+
+; Removes one char from the video buffer and winds back the cursor
+printf.back:
+  push r0 
+  push r1
+  push r2
+  call read_console_cursor
+  sub r0, 1
+  ldi r1, 0
+  wb [r0], r1
+  call write_console_cursor
+  pop r2
+  pop r1
+  pop r0
+  ret
+
+; DONT USE THIS
+printf.newline_internal:
+  ldi r0, '\n'
+  call console_emitchar
+  pop r4
+  pop r2 
+  pop r1
+  pop r0
+  clf
+  ret
+
+; DO USE THIS
+printf.newline:
+  push r0 
+  ldi  r0, '\n'
+  call console_emitchar
+  pop  r0
+  ret
+
+; ptr r0: string
+strprint:
+  push r0
+  push r1
+  push r2
+  copy r1, r0
+  jmp strprint.loop
+
+strprint.loop:
+  rb r2, [r1]
+  cmp r2, 0
+  je strprint.end
+  clf
+  call read_console_cursor
+  wb [r0], r2
+  add r1, 1
+  call increment_console_cursor
+  jmp strprint.loop
+
+strprint.end:
+  pop r2 
+  pop r1
+  pop r0
+  clf 
+  ret
+
+; word
+console_cursor:
+  dw 0
+
+; dword
+kernel_clock_address:
+  dd 0
+
+; Makes a list of present files, seperated by a char that you give it
+; ptr r0: address to put the list
+; arg r1: seperator
+files_present:
+  push r0
+  copy r23, r1
+  call qboot_ldisk
+  pop r0
+  ldi r1, 0x0F000000
+  
+files_present.loop:
+  add r1, 10
+
+  rb  r2, [r1]
+  cmp r2, 0
+  je files_present.done
+  clf 
+
+  copy r3, r1   
+  jmp files_present.string_append_loop
+
+files_present.string_append_loop:
+  rb r2, [r3]
+  cmp r2, 0
+  je files_present.string_append_done
+  ; if not 0, write
+  wb [r0], r2
+  add r3, 1
+  add r0, 1
+  jmp files_present.string_append_loop
+
+files_present.string_append_done:
+  ; Add our given seperator arg
+  wb  [r0], r23
+  add r0, 1
+  clf
+  add r1, 20 
+  jmp files_present.loop
+
+files_present.done:
+  clf
+  ret
+
+; Steps the kernel clock by one second
+step_clock:
+  push r0 
+  push r1
+  ldi r1, kernel_clock_address
+  mov r0, [r1]
+  add r0, 1
+  mov [r1], r0
+  pop r1
+  pop r0
+  ret
+
+; ret r0: cursor
+read_console_cursor:
+  push r1
+  ldi r0, console_cursor
+  rw r1, [r0]
+  add r1, VMEM
+  copy r0, r1
+  pop  r1
+  ret
+  
+; Used mainly by keyboard
+; arg r0: new cursor
+write_console_cursor:
+  push r0 
+  push r1
+  ldi r1, console_cursor
+  ww [r1], r0
+  pop r1
+  pop r0
+  ret
+  
+
+; cur++ 
+increment_console_cursor:
+  push r0
+  push r1
+  call read_console_cursor
+  sub r0, VMEM
+  add r0, 1
+  ldi r1, console_cursor
+  ww [r1], r0
+  pop  r1
+  pop  r0
+  ret
+
+; arg r0: char
+console_emitchar:
+  push r1
+  push r2
+  push r0
+  call read_console_cursor
+  copy r1, r0 
+  pop r0
+  wb [r1], r0
+  call increment_console_cursor
+  pop  r2
+  pop  r1
+  ret
+
+; Reads a single ascii input stream into [r0]
+; ptr r0: where to place the input
+readline:
+  ; Store dest into a diff register
+  copy r9, r0  ; we will use r9 internally because its less likely to get clobbered
+  copy r10, r9 ; save the original base of the given buffer
+  call read_console_cursor
+  ; Save the original console cursor - we wind it back every time a key is pressed to print the current input
+  copy r8, r0
+  xor r11, r11 ; We use this to track how many keys have been pressed so we can push the console cursor forward
+  ; Clear the keyboard buffer
+  int 0x0A ; thanks, BIOS.
+  ; Start the interrupt loop
+  jmp readline.await_key
+
+readline.await_key:
+  ; Currently this OS deals with 2 device interrupts, the PIT and the keyboard
+  ; We can check that this was a keyboard interrupt by checking if the PIT clock changed - if it didnt, a key was pressed
+  ; Print the current command
+  push r8 ; r8, r9 and r10 (our very needed registers) get clobbered by printf, lets fix that by putting them on the stack
+  push r9
+  push r10  
+  ; rollback console cursor to our saved one
+  copy r0, r8
+  call write_console_cursor
+  copy r0, r10
+  ldi r4, 0 
+  call printf
+  pop r10
+  pop r9
+  pop r8
+  ldi r0, kernel_clock_address
+  mov r2, [r0]
+  sti ; ensure interrupts are enabled
+  hlt
+  cli ; cant be having interrupts occuring during interrupts
+  ldi r0, kernel_clock_address
+  mov r1, [r0]
+  cmp r2, r1 
+  je readline.key_pressed  ; if last == end, the clock did not change and it was a keyboard interrupt (i am so confident.... lol)
+  ; cant wait until another interrupting device is added and we start reading phantom keys [ :D ]!
+  ; if not, then repeat
+  jmp readline.await_key
+
+readline.key_pressed:
+  ; BIOS ABI says 'The keyboard cursor relative to the base address and is located at 0x00000EFF, just below the start of the buffer. It points to the next available char slot.'
+  ; Lets trust that and read from that address as our cursor
+  ldi r0, KEYBOARD_BUFFER_BASE_ADDRESS
+  sub r0, 1
+  rb r1, [r0]
+  add r1, KEYBOARD_BUFFER_BASE_ADDRESS
+  sub r1, 1 ; decrease to the last char
+  ; Now read the key that the cursor points to
+  rb r2, [r1]
+  ; Now check that key against backspace and return
+  cmp r2, 8  ; ASCII backspace control char
+  je readline.backspace
+  clf
+  cmp r2, '\r' ; ASCII carrige return control char
+  je readline.return
+  clf
+  ; if it was neither of them, then just append the char to our given arg and repeat the loop
+  add r11, 1
+  wb [r9], r2
+  add r9, 1
+  jmp readline.await_key
+
+readline.backspace:
+  ; For a backspace, simply remove the last char and rollback our cursor
+  ; FIX: yeah... doing this also makes it so we can backspace and remove what comes before the address we write the char stream to
+  ; simply dont to the backspace if current ptr == given base
+  cmp r9, r10
+  je readline.await_key
+  sub r9, 1
+  ldi r0, 0
+  wb [r9], r0
+  ; Now delete the last key pressed
+  call printf.back
+  ; And decrement our cursor
+  sub r11, 1
+  ; repeat the loop
+  jmp readline.await_key
+
+readline.return:
+  ; Input is done and we can return.
+  jmp readline.end
+
+readline.end:
+  ; Move the console cursor to our calculated end address
+  add r8, r11
+  copy r0, r8
+  call write_console_cursor ; end address = base + chars
+
+
+  ; And now print a newline  
+  call printf.newline
+
+  ; Done, return.
+  clf
+  ret
+
+
+; Turns r0 into a ascii byte stream and puts it into [r1]
+ascii_r0:
+    copy   r3, r0           ; r3 = working value
+    ldi    r2, 0            ; r2 = digit count so far
+
+    ; special case: value is exactly 0 -> emit a single '0'
+    cmp    r3, 0
+    jne    .dec_extract_loop
+    ldi    r4, 48            ; '0'
+    wb     [r1], r4
+    ldi    r2, 1
+    jmp    .dec_done
+
+.dec_extract_loop:
+    cmp    r3, 0
+    je     .dec_write_loop
+
+    ; --- digit = r3 - (r3/10)*10 ; r3 = r3/10 ---
+    copy   r5, r3
+    div    r5, 10            ; r5 = r3 / 10   (base-10 "shift right")
+    copy   r6, r5
+    mul    r6, 10            ; r6 = (r3/10)*10
+    copy   r7, r3
+    sub    r7, r6             ; r7 = r3 - (r3/10)*10 = digit (0..9)
+
+    add    r7, 48             ; digit -> ASCII '0'..'9'
+    push   r7                 ; stage digit (comes off LSB-first)
+    add    r2, 1               ; digit count++
+
+    copy   r3, r5              ; r3 = r3 / 10, continue with the rest
+    jmp    .dec_extract_loop
+
+.dec_write_loop:
+    ; pop digits back off in reverse -> lands MSB-first in [r1..]
+    copy   r4, r2              ; r4 = remaining digits to write
+    copy   r6, r1               ; r6 = write cursor, starts at r1
+
+.dec_write_one:
+    cmp    r4, 0
+    je     .dec_done
+    pop    r7                    ; r7 = next digit, comes off MSB-first
+    wb     [r6], r7
+    add    r6, 1
+    sub    r4, 1
+    jmp    .dec_write_one
+
+.dec_done:
+    ret
+
+hex_r0:
+    copy   r2, r0          ; r2 = working copy of the value
+    ldi    r4, 7           ; r4 = digit slot index, 7 (LSB) -> 0 (MSB)
+ 
+.hex_digit_loop:
+    ; --- isolate the lowest nibble of r2 into r3 ---
+    ; r3 = r2 - (r2 / 16) * 16     (== r2 & 0xF, no reg/imm AND needed)
+    copy   r5, r2
+    div    r5, 16          ; r5 = r2 / 16   (this *is* shr 4)
+    copy   r3, r5
+    mul    r3, 16          ; r3 = (r2 / 16) * 16
+    copy   r6, r2
+    sub    r6, r3           ; r6 = r2 - (r2/16)*16 = low nibble
+    copy   r3, r6           ; r3 = low nibble (0..15)
+ 
+    ; --- shift r2 right by 4 for the next round ---
+    copy   r2, r5
+ 
+    ; --- convert nibble in r3 to an ASCII hex digit ---
+    cmp    r3, 10
+    jl     .hex_digit_09
+    add    r3, 55          ; 10..15 -> 'A'..'F'   (55 = 'A' - 10)
+    jmp    .hex_digit_store
+.hex_digit_09:
+    add    r3, 48          ; 0..9   -> '0'..'9'   (48 = '0')
+ 
+.hex_digit_store:
+    ; --- write the ASCII digit to [r1 + digit_slot] ---
+    copy   r5, r1
+    add    r5, r4
+    wb     [r5], r3
+ 
+    ; --- next digit (walking from the LSB slot down to the MSB slot) ---
+    cmp    r4, 0
+    je     .hex_digit_done
+    sub    r4, 1
+    jmp    .hex_digit_loop
+ 
+.hex_digit_done:
+    ret
+
+text_pool:        dd 0, 0, 0, 0, 0, 0, 0, 0,
+
+error_unknown_op: db "Unknown instruction at 0x~", 136, 0
+error_mem:        db "Memory error at instruction 0x~", 136, 0
+panic_msg:        db "Kernel Panic! IP=~ ERROR=^", 0
+
+log_file_name:    db "journal.ef", 0
+shl_file_name:    db "shell.ef", 0
+
+log_file_msg:     db "read journal.ef", 0
+
+kernel_log0:      db "KRNL: quasix kernel v4.2.1, 256MB memory available, kernel memory 0x00010000", 0
+kernel_log1:      db "PIT: Init", 0
+kernel_log2:      db "PIT: driver ready but not yet started (ports 0x01, 0x02, irq 0x02, interval 1s)", 0
+kernel_log3:      db "IVT: mapped exceptions to their handlers", 0
+kernel_log4:      db "KRNL: starting kernel loop", 0
+kernel_log5:      db "KRNL: enabled maskable interrupts", 0
+kernel_log6:      db "PIT: await PIT sync", 0
+kernel_log7:      db "PIT: synced", 0
+
+INPUTDATA_ADDRESS:
+ dd 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+kern_endp:
+origin 0
+region 0x0B800000
+; Video memory address
+VMEM:
+
+region 0x00000f00
+; Base address of the keyboard buffer
+KEYBOARD_BUFFER_BASE_ADDRESS:

@@ -1,0 +1,20 @@
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+ldi r0, file_list_prefix
+ldi r4, 0
+call printf
+ldi r0, file_list_loc
+ldi r1, ' '
+call files_present
+ldi r0, file_list_loc
+ldi r4, 1
+call printf
+ret
+
+file_list_prefix:
+  db 132, 0
+
+file_list_loc:

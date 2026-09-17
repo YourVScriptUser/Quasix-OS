@@ -1,0 +1,65 @@
+origin 0x00005C00 ; Address of where the BIOS puts the bootloader
+
+; Copyright VSK 2026, all rights reserved
+
+; Quasix non-extended bootloader
+; Loaded at sector 0
+
+region 0 ; Sector 0
+; Main Boot Master Header
+db 0x55, 0xAA
+db "Q-Boot v4.2.1", 0
+
+region 64 ; Byte offset 5C40 (Boot sector executable code offset)
+; Load extended bootloader for the SSFS (Simple Sector File System)
+; Extended bootloader in sectors 1-3
+; Sector 4 is reserved for the file table
+; Load those sectors to 00006000 then jump to that address
+cli
+
+; Load the three extended bootloader SSFS sectors
+ldi r0, 1
+ldi r1, 0x00007000
+int 0x05 
+
+add r0, 1
+add r1, 1024
+int 0x05
+
+add r0, 1
+add r1, 1024
+int 0x05
+
+; Jump to where we loaded it
+ldi r1, boot_msg
+call printb
+jmp 0x00007000
+
+; .boot.x32 print routine
+; ptr r1: string
+printb:
+  jmp printb.loop
+
+printb.loop:
+  rb  r0, [r1]
+  cmp r0, 0
+  je printb.end
+  int 0x0E
+  add r1, 1
+  jmp printb.loop
+
+printb.end: 
+  clf
+  ret
+
+boot_msg:
+  db "Q-Boot: CPU: VSK-32, Memory: 256MB\n"
+  db " BIOS Memory Table:\n"
+  db " 00000000:000000FF IVT\n"
+  db " 00000EFF:00000FFF Keyboard\n"
+  db " 00001000:00005C00 BIOS Reserved\n"
+  db " 00005C00:00006000 Bootloader\n"
+  db " 0B800000:0B800FFF Video\n"
+  db "268,408,789 bytes free\n"
+  db "PMIO: 256 Ports\n"
+  

@@ -1,0 +1,76 @@
+ Hardware Ports:
+  KB_PORT                       ->     0x4B # The keyboard port, holds the key pressed
+  STORAGE_STATUS_NOTIFY_PORT    ->     0x00 # Tells the disk to do something 
+  STORAGE_SECTOR_PORT           ->     0xEA # Disk sector port
+  STORAGE_ADDRESS_PORT          ->     0xEB # Where the disk writes the sector to memory
+  STORAGE_STORAGE_MODE          ->     0xEC # Disk mode port 1 = read, 2 = write
+
+ Hardware ISRs (IDs):
+  KB_ISR                        ->     0x01 # Keyboard interrupt routine (id - not address!)
+
+ Exception ISRs (IDs) - Emulator Classes:
+  System.Exceptions.InvalidOpcodeError.UnknownOpcode: 63
+  System.Exceptions.InvalidOpcodeError.InvalidFlags:  62
+  System.Exceptions.InvalidRegister:                  61
+  System.Exceptions.InvalidMemoryWrite:               60
+  System.Exceptions.UnknownError:                     59
+ (Pulled from emulator source code)
+
+ *4 for real address
+
+ Video Colors:
+  130: RED,
+  131: GREEN,
+  132: BLUE,
+  133: BRIGHT_BLACK,
+  134: CYAN,
+  135: BG_RED,
+  136: RESET
+
+ BIOS Uses r20 as a text cursor
+ Do not clobber r20
+
+ BIOS Region:
+  Total        : 00000000 - 00005400  
+  Code         : 0000100A - 00005400  ( Including interrupt code )
+  Stack        : 00005400 - 00005BAA  (       Not Enforced       )
+  Boot Sector  : 00005C00 - 00006000  (  Boot Sector loaded here )
+
+ BIOS file is 21KiB
+
+ Keyboard buffer at:
+  00000F00 - 00000FFF
+ Keyboard buffer cursor at:
+  00000EFF
+
+ Emulator video memory at:
+  0B800000 - 0B800FFF
+
+ BIOS Interrupts:
+  BIOS Interrupt IVT ID reserved: 5-20
+  ID * 4 = dword address of vector
+ ABI:
+  ( ID: Explanation )
+
+  14: Teletype               (0x0E)
+      r0: ASCII Letter to print
+
+   5: Disk read              (0x05)
+      r0: Sector
+      r1: Address
+
+   6: Disk write             (0x06)
+
+  10: Clear Keyboard Buffer  (0x0A)
+
+
+ Keyboard buffer cursor is relative to the base address
+ This is so the cursor can stay as a singular byte (This is why the size of the keyboard buffer is 256B)
+ To calculate the real address of the key pressed byte: Address = Cursor + Keyboard Base Address
+ BIOS Stores its video cursor at print.teletype_cursor - A single byte stored inside the BIOS code.
+
+ BSH (Boot Sector Header) Layout:
+  55 AA Expected to be exactly at:                     5C00-5C01
+  Null-terminated OS string expected to be exactly at: 5C02-5C35
+  Boot Code to start and end at exactly:               5C40-6000
+ BIOS Loads the kernelspace stack to 000F0000

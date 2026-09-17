@@ -1,0 +1,101 @@
+origin 0x00030000
+db 0xAF, 0xFA
+dd 0x00030000
+; Batch of newlines (freshly cooked, straight out of the oven)
+call printf.newline
+call printf.newline
+
+jmp shell_loop
+
+shell_loop:
+  ldi r0, shell_prompt
+  ldi r4, 0
+  call printf
+
+  ldi r0, commandbuf
+  ldi r1, 30
+  ldi r2, 0
+  call memset
+
+  ldi r0, inputbuf
+  ldi r1, 1024
+  ldi r2, 0
+  call memset
+
+  call enable_video_cursor
+  ldi r0, inputbuf
+  call readline
+  call disable_video_cursor
+
+  ; Trim off a space if args are needed
+  ldi r0, inputbuf
+  ldi r1, ' '
+  ldi r2, commandbuf
+  ldi r3, 30
+  call right_extract
+
+  ldi r0, inputbuf
+  rb r1, [r0]
+  cmp r1, 0
+  je shell_loop
+
+  ldi r0, commandbuf
+  ldi r7, 0
+  call qboot_load_ef_file
+  cmp r0, 1
+  je command_not_found
+
+  ; The first two bytes of a command file's entrypoint are expected to match the word 0xF00D
+  rb r0, [r6]
+  cmp r0, 0xF0
+  jne command_bad_magic ; fix: why the FUCK was this je
+  ; yeah hurrrr duurrrr lets just type s0.BOOT and RE-RUN THE ENTIRE BOOT PROCESS
+  ; GAHHHHHHHHHHHHHHHHHHHHHHH
+
+  add r6, 1
+  rb r0, [r6]
+  cmp r0, 0x0D
+  jne command_bad_magic
+
+  push command_return
+  add r6, 1
+  jmp r6
+
+  command_return:
+    jmp shell_loop
+
+
+command_not_found:
+  ldi r0, shell_command_not_found
+  ldi r4, 1
+  ldi r1, commandbuf
+  call printf
+  jmp shell_loop
+
+command_bad_magic:
+  ldi r0, shell_command_food_error
+  ldi r4, 1
+  call printf
+  jmp shell_loop
+
+shell_command_not_found:
+  db "Command '~' not found.", 0
+
+shell_command_food_error:
+  db "Invalid command file: bad magic", 0
+
+shell_header_msg:
+  db "Type 'help' for a command list", 0
+
+shell_prompt:
+  db 131, " /$ ", 136 , 0
+
+; Holds the current command, no args (32 bytes)
+commandbuf:
+  dd 0, 0, 0, 0
+
+; Keep this at the bottom of shell.x32
+inputbuf:
+
+
+  

@@ -1,0 +1,561 @@
+origin 0x00007000 ; Address that .boot.x32 loads this
+; .ef file format (Executable Format) (Not to be confused from .elf, this is completley different.)
+;  Expected to start with 0xAF, 0xFA (0xAFFA)
+;  Full Header:
+;   [0xAF, 0xFA, <load_addr:4(dword)>]
+
+; Q-Boot bootloader for Quasix
+jmp qboot
+
+
+
+qboot:
+  call qboot_ldisk
+  call get_next_video
+  copy r20, r0
+
+  ssp STACK_SPACE
+  ldi r0, stack_msg
+  call early_print
+  call early_newline
+
+  call early_newline
+  ldi r0, kernel_load_status
+  call early_print
+
+  ldi r0, kernel_file_name
+  ldi r7, 1
+  call qboot_load_ef_file 
+
+  cmp r0, 1
+  je kernel_not_found
+  cmp r0, 2 
+  je kernel_header_invalid
+  clf
+
+  jmp r6
+
+
+kernel_header_invalid:
+  ldi r0, kernel_header_error
+  call early_print
+  jmp die
+
+kernel_not_found:
+  ldi r0, kernel_missing_error
+  call early_print
+  jmp die
+
+die:
+  cli
+  hlt
+  jmp die
+
+; Copies disk metadata to 0x0F000000
+qboot_ldisk:
+  ldi r0, 4
+  ldi r1, 0x0F000000
+  int 0x05
+  
+  ret
+
+
+
+;  ptr r0: str name
+;  chc r7: print status '.' as it goes along
+;  ret r0: status
+;  ret r6: entrypoint
+;  ret r7: size (in bytes)
+qboot_load_ef_file:
+  ; Load the args into different registers that don't get clobbered
+  copy r8, r0 ; r8 = String name pointer 
+
+  ; First, we must verify the file exists
+  call qboot.file_exist ; qboot.file_exist takes the string name in r0, no need for copy.
+  cmp r0, 0          ; compare return against 0
+  je qboot_load_ef_file.file_nonexist ; If the file does not exist (r0 was 0)
+  call qboot_load_ef_file.print_st
+  call qboot_ldisk ; refresh filesystem
+  xor r2, r2 ; r2 = Current (VAR)
+  ldi r3, 0x0F000000 ; r3 = Pointer (VAR)
+  ; No need to check bounds, if the file does not exist then we would have returned earlier.
+  jmp qboot_load_ef_file.loop
+
+qboot_load_ef_file.loop:
+  ; Get current byte
+  rb r2, [r3]
+  ; Increment pointer
+  add r3, 1
+
+  ; If it is not a file entry descriptor, then repeat
+  cmp r2, 0xFE
+  jne qboot_load_ef_file.loop
+  clf
+
+  ; If there is one, skip forward 9 times to compare the file name
+  ; Then subtract by 9 to get back to where we were
+  add r3, 9
+  ; r8 is the string name pointer
+  ; Preserve regs
+  push r2
+  push r3
+  copy r0, r8     ; Copy current SSFS pointer into the arguments for qboot.str_compare
+  copy r1, r3     ; This was a fix, didn't realise when i added the two copy instructions.
+  call qboot.str_compare ; Sets r0
+  pop r3
+  pop r2
+  ; If r0 is 0, then go back to loop because that means the file is not the file we are looking for
+  cmp r0, 0
+  je qboot_load_ef_file.loop
+  clf
+
+  ; if it is 1, then this is the file we are looking for
+  ; Go back 9
+  sub r3, 9
+
+  ; then read the sectors that this file is at
+  ; r3 points to the starting sector if the metadata table is intact
+  ; Read that starting sector
+  mov r2, [r3] ; Put start sector in r2
+  add r3, 4   ; Increment to the length sector (by 4 since its a dword)
+
+  mov r4, [r3] ; Read length sector
+  copy r22, r4
+  ; Calculate end sector
+  add r4, r2  ; End sector = Start sector + Sector length - 1 (minus 1 because its not inclusive of end)
+  sub r4, 1
+  call qboot_load_ef_file.print_st
+  ; from earlier, r8 is file string address
+     
+  push r2
+  push r4
+  ; Read the first sector to find the load address (.ef loader)
+  ldi r1, 0x0F000000
+  add r1, 1024
+  copy r0, r2
+  int 0x05
+  ldi r0, 0x0F000000
+  add r0, 1024
+  ; if the first two bytes != 0xAFFA, the file is not a valid .ef file.
+  rb r1, [r0]
+  cmp r1, 0xAF
+  jne qboot_load_ef_file.header_invalid
+  add r0, 1
+  rb r1, [r0]
+  cmp r1, 0xFA
+  jne qboot_load_ef_file.header_invalid
+  ; And now read the load address and put it in r9
+  add r0, 1
+  mov r9, [r0]
+  copy r23, r9 ; also preserve it
+  pop r4
+  pop r2
+  call qboot_load_ef_file.print_st
+  jmp qboot_load_ef_file.do_load_loop
+  
+; r2 = Sector
+; r9 = Load address
+qboot_load_ef_file.do_load:
+  ; Read an individual sector, write it at the value in r9
+  copy r0, r2  ; SWI sector  
+  copy r1, r9  ; SWI load address
+  int 0x05    
+  call qboot_load_ef_file.print_st
+  ret
+
+qboot_load_ef_file.print_st:
+  cmp r7, 1
+  je qboot_load_ef_file.print_st_do
+  print_st_do_resume:
+  ret
+
+qboot_load_ef_file.print_st_do:
+  cmp r7, 0
+  je print_st_do_resume
+  push r1
+  ldi r0, STATUS_DOT
+  call early_print
+  pop r1
+  jmp print_st_do_resume
+
+STATUS_DOT:
+  db '.', 0
+
+STATUS_EXC:
+  db '!', 0
+
+STATUS_DUN:
+  db "done", 0
+
+; r2 = starting sector
+; r4 = end sector
+; r9 = load address
+qboot_load_ef_file.do_load_loop:
+  ; Loop through sectors until starting sector = end sector (we increment starting sector)
+  
+  ; Write the sector
+  call qboot_load_ef_file.do_load
+
+  ; Increment the pointers
+  add r2, 1
+  add r9, 1024 ; Sectors are 1024B
+
+  ; If we are above the end sector, then we have finished the load and can return
+  cmp r2, r4 ; if r2 higher than r4
+  jh qboot_load_ef_file.done
+ 
+  ; if not, then continue the loop
+  jmp qboot_load_ef_file.do_load_loop
+
+qboot_load_ef_file.done:
+  cmp r7, 0
+  je skip
+  ldi r0, STATUS_DUN
+  call early_print
+  call early_newline
+  skip:
+  ldi r0, 0
+  copy r6, r23
+  add r6, 6 ; FIX: This bug is my second reason
+            ; Add 6 to the entrypoint to skip the .ef header
+
+  copy r7, r22  
+  mul r7, 1024 ; multiply length in sectors by sector size to get the length        
+  die_now:
+  clf
+  ret
+
+qboot_load_ef_file.file_nonexist:
+  cmp r7, 0
+  je skip1
+  ldi r0, STATUS_EXC
+  call early_print
+  call early_newline
+  skip1:
+  ldi r0, 1
+  clf
+  ret
+
+qboot_load_ef_file.header_invalid:
+  pop r4 ; FIX: r2 and r4 were still on the stack
+  pop r2
+  cmp r7, 0
+  je skip2
+  ldi r0, STATUS_EXC
+  call early_print
+  call early_newline
+  skip2:
+  ldi r0, 2
+  clf 
+  ret
+
+;  ptr r0: str name
+;  ptr r1: where to load the file
+;  chc r7: print status '.' as it goes along
+;  ret r0: status
+;  ret r7: size (in bytes)
+qboot_load_raw_file:
+  ; Load the args into different registers that don't get clobbered
+  copy r8, r0 ; r8 = String name pointer 
+  copy r9, r1 ; r9 = Load address
+  ; First, we must verify the file exists
+  call qboot.file_exist ; qboot.file_exist takes the string name in r0, no need for copy.
+  cmp r0, 0          ; compare return against 0
+  je qboot_load_raw_file.file_nonexist ; If the file does not exist (r0 was 0)
+  call qboot_load_raw_file.print_st
+  call qboot_ldisk ; refresh filesystem
+  xor r2, r2 ; r2 = Current (VAR)
+  ldi r3, 0x0F000000 ; r3 = Pointer (VAR)
+  ; No need to check bounds, if the file does not exist then we would have returned earlier.
+  jmp qboot_load_raw_file.loop
+
+qboot_load_raw_file.loop:
+  ; Get current byte
+  rb r2, [r3]
+  ; Increment pointer
+  add r3, 1
+
+  ; If it is not a file entry descriptor, then repeat
+  cmp r2, 0xFE
+  jne qboot_load_raw_file.loop
+  clf
+
+  ; If there is one, skip forward 9 times to compare the file name
+  ; Then subtract by 9 to get back to where we were
+  add r3, 9
+  ; r8 is the string name pointer
+  ; Preserve regs
+  push r2
+  push r3
+  copy r0, r8     ; Copy current SSFS pointer into the arguments for qboot.str_compare
+  copy r1, r3     ; This was a fix, didn't realise when i added the two copy instructions.
+  call qboot.str_compare ; Sets r0
+  pop r3
+  pop r2
+  ; If r0 is 0, then go back to loop because that means the file is not the file we are looking for
+  cmp r0, 0
+  je qboot_load_raw_file.loop
+  clf
+
+  ; if it is 1, then this is the file we are looking for
+  ; Go back 9
+  sub r3, 9
+
+  ; then read the sectors that this file is at
+  ; r3 points to the starting sector if the metadata table is intact
+  ; Read that starting sector
+  mov r2, [r3] ; Put start sector in r2
+  add r3, 4   ; Increment to the length sector (by 4 since its a dword)
+
+  mov r4, [r3] ; Read length sector
+  copy r22, r4
+  ; Calculate end sector
+  add r4, r2  ; End sector = Start sector + Sector length - 1 (minus 1 because its not inclusive of end)
+  sub r4, 1
+  call qboot_load_raw_file.print_st
+  ; from earlier, r8 is file string address
+     
+  ; haha no more .ef handling BOZO
+  jmp qboot_load_raw_file.do_load_loop
+  
+; r2 = Sector
+; r9 = Load address
+qboot_load_raw_file.do_load:
+  ; Read an individual sector, write it at the value in r9
+  copy r0, r2  ; SWI sector  
+  copy r1, r9  ; SWI load address
+  int 0x05    
+  call qboot_load_raw_file.print_st
+  ret
+
+qboot_load_raw_file.print_st:
+  cmp r7, 1
+  je qboot_load_raw_file.print_st_do
+  print_st_do_resume2:
+  ret
+
+qboot_load_raw_file.print_st_do:
+  cmp r7, 0
+  je print_st_do_resume2
+  push r1
+  ldi r0, STATUS_DOT
+  call early_print
+  pop r1
+  jmp print_st_do_resume2
+
+
+
+; r2 = starting sector
+; r4 = end sector
+; r9 = load address
+qboot_load_raw_file.do_load_loop:
+  ; Loop through sectors until starting sector = end sector (we increment starting sector)
+  
+  ; Write the sector
+  call qboot_load_raw_file.do_load
+
+  ; Increment the pointers
+  add r2, 1
+  add r9, 1024 ; Sectors are 1024B
+
+  ; If we are above the end sector, then we have finished the load and can return
+  cmp r2, r4 ; if r2 higher than r4
+  jh qboot_load_raw_file.done
+ 
+  ; if not, then continue the loop
+  jmp qboot_load_raw_file.do_load_loop
+
+qboot_load_raw_file.done:
+  cmp r7, 0
+  je skip01
+  ldi r0, STATUS_DUN
+  call early_print
+  call early_newline
+  skip01:
+  ldi r0, 0
+  ; you dont GET an entrypoint 
+  ; HEHEHE
+  copy r7, r22
+  mul r7, 1024
+  jmp die_now
+
+qboot_load_raw_file.file_nonexist:
+  cmp r7, 0
+  je skip11
+  ldi r0, STATUS_EXC
+  call early_print
+  call early_newline
+  skip11:
+  ldi r0, 1
+  clf
+  ret
+
+qboot_load_raw_file.header_invalid:
+  pop r4 ; FIX: r2 and r4 were still on the stack
+  pop r2
+  cmp r7, 0
+  je skip22
+  ldi r0, STATUS_EXC
+  call early_print
+  call early_newline
+  skip22:
+  ldi r0, 2
+  clf 
+  ret
+
+; ret/ptr r0: status / str name
+qboot.file_exist:
+  push r0
+  call qboot_ldisk ; FIX: self-explanatory, i think.
+  pop r0 ; DOUBLEFIX: yeah maybe preserve our args 
+  ldi r3, 0x0F000000 ; r3 = Pointer (VAR)
+  copy r4, r3 
+  add r4, 1024                   ; r4 = Address Terminator (CONST)
+
+  jmp qboot.file_exist.loop
+
+qboot.file_exist.loop:
+  ; If we have hit the end of the metadata, the file was not found.
+  cmp r3, r4
+  je qboot.file_exist.does_not
+
+  ; Read current
+  rb r1, [r3]
+ 
+  ; Increment
+  add r3, 1
+  
+  ; If not a file marker, run it again
+  cmp r1, 0xFE
+  jne qboot.file_exist.loop
+
+  ; If it is a file marker, increment pointer by 9 and compare the strings against the arg string.
+  ; We increment by 9 to skip over the data we don't need
+  ; We dont increment by 10 because r3 already points to offset 1 
+  add r3, 9
+  ; r0 is preserved accross this routine
+  ; No need to copy anything into a diff register for string A, qboot.str_compare already takes r0 as string A
+  ; Only need to copy the address for string B into r1
+  ; We can clobber r2, its not used in this routine either.
+  ; Now, qboot.str_compare returns 1 in r0 if the comparison was correct, 0 if not. Which means r0 gets clobbered.
+  ; Simply push it to the stack
+
+  push r0
+  push r3       ; Preserve scratch register r3 as qboot.str_compare clobbers it
+  copy r1, r3   ; Current gets clobbered, thats ok. Its only used for magic detection.
+  call qboot.str_compare
+  
+  ; Compare not exist
+  cmp r0, 0
+
+  pop r3 ; Get r3 back
+  pop r0 ; Get our string A argument back (fine here because the cmp above compares before we pop)
+  je qboot.file_exist.loop ; Keep doing the loop
+
+  ; If it does exist (r0!=0), then the file exists.
+  jmp qboot.file_exist.does
+  
+qboot.file_exist.does_not:
+  ldi r0, 0
+  clf
+  ret 
+
+qboot.file_exist.does:
+  ldi r0, 1
+  clf
+  ret
+
+; ptr r0: string a
+; ptr r1: string b
+; ret r0: result
+qboot.str_compare:
+  jmp qboot.str_compare.loop
+
+qboot.str_compare.loop:
+  ; Read current bytes
+  rb r2, [r0]
+  rb r3, [r1]
+  
+  ; Compare them
+  cmp r2, r3
+  jne qboot.str_compare.wrong ; If not equal, then they are wrong
+  clf
+
+  ; Check for termination of A
+  cmp r2, 0
+  je qboot.str_compare.same  ; Go directly to same because if B was not 0, it would have been picked up before
+  clf
+
+  ; Increment pointers
+  add r0, 1
+  add r1, 1
+
+  ; Repeat
+  jmp qboot.str_compare.loop
+  
+  
+qboot.str_compare.wrong:
+  ldi r0, 0
+  clf
+  ret
+
+qboot.str_compare.same:
+  ldi r0, 1
+  clf
+  ret
+
+; ptr r0: string
+; r20 is a video cursor so please preserve that
+early_print:
+  jmp early_print.loop
+            
+early_print.loop:
+  rb r1, [r0]
+  cmp r1, 0
+  je early_print.end
+  clf
+  wb [r20], r1  
+  add r0, 1
+  add r20, 1
+  jmp early_print.loop
+
+early_print.end:
+  clf
+  ret
+
+; Prints a newline
+early_newline:
+  ldi r0, '\n'  
+  wb [r20], r0
+  add r20, 1
+  ret
+
+; Returns the address of the next free slot in video memory
+; ret r0: result
+get_next_video:
+  ldi r1, 0x0B800000 
+  jmp get_next_video.loop
+
+get_next_video.loop:
+  rb r2, [r1]
+  cmp r2, 0
+  je get_next_video.end
+  add r1, 1
+  jmp get_next_video.loop
+  
+
+get_next_video.end:
+  copy r0, r1
+  clf
+  ret
+  
+
+kernel_file_name:     db "qenv32.ef", 0
+kernel_load_status:   db "filesystem read success\n", "read qenv32.ef", 0
+kernel_header_error:  db "Q-Boot: kernel file header invalid", 0
+kernel_missing_error: db "Q-Boot: kernel not found", 0
+stack_msg:            db "Q-Boot: rsp moved to 0x000f0000", 0
+origin 0
+region 0x000F0000
+; Base address of the main stack
+STACK_SPACE:

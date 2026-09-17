@@ -1,0 +1,73 @@
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; skip past 'cat '
+ldi r0, inputbuf
+add r0, 4
+
+ldi r7, 0
+ldi r1, cat_load_addr
+call qboot_load_raw_file
+cmp r0, 1
+je file_not_found_Cat
+clf
+call attempt_print_ascii
+ret
+
+attempt_print_ascii:
+  ldi r1, cat_load_addr
+
+attempt_print_ascii.loop:
+  rb r0, [r1]
+  ; treat a null byte as the end of the file - this is how text files work.
+  cmp r0, 0
+  je attempt_print_ascii.end
+  clf
+  cmp r0, 10 ; dont print messy control chars that can stuff up the terminal
+  jl attempt_print_ascii.invalid_bytes
+  clf
+  cmp r0, 13 ; skip carrige returns they break the terminal output
+  je attempt_print_ascii.increment_and_continue
+  clf
+  cmp r0, 127
+  jh attempt_print_ascii.invalid_bytes
+  clf
+  call console_emitchar
+  add r1, 1
+  jmp attempt_print_ascii.loop
+
+attempt_print_ascii.increment_and_continue:
+  add r1, 1
+  jmp attempt_print_ascii.loop
+
+attempt_print_ascii.invalid_bytes:
+  call printf.newline
+  ldi r0, cat_ascii_read_error_msg
+  ldi r4, 1
+  call printf
+  jmp attempt_print_ascii.end
+
+attempt_print_ascii.end:
+  ldi r0, '\n'
+  call console_emitchar
+  clf
+  ret
+
+file_not_found_Cat:
+  ldi r0, msg_file_not_found_cat
+  ldi r1, inputbuf
+  add r1, 4
+  ldi r4, 1
+  call printf
+  clf
+  ret
+
+cat_ascii_read_error_msg:
+  db "cat: Invalid ASCII bytes", 0
+
+msg_file_not_found_cat:
+  db "cat: File not found: '~'"
+
+cat_load_addr:

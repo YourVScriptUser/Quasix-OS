@@ -1,0 +1,72 @@
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; skip past 'hexdig '
+ldi r0, inputbuf
+add r0, 7
+
+ldi r7, 0
+ldi r1, load_addr
+call qboot_load_raw_file
+cmp r0, 1
+je file_not_found
+call walk_hex
+ret
+
+walk_hex:
+  push r7
+  ldi r2, load_addr
+  xor r3, r3
+  jmp walk_hex.loop
+    
+walk_hex.loop:
+  rb r0, [r2]
+  ldi r1, text_pool
+  push r2
+  push r3
+  call hex_r0
+  pop r3
+  pop r2
+  add r3, 1
+  ldi r0, ' '
+  call console_emitchar
+  ldi r0, text_pool
+  add r0, 6 ; bytes only take up 2 chars in a 32-bit hex string
+  ldi r4, 0
+  push r2
+  push r3
+  call printf
+  pop r3
+  pop r2
+  add r2, 1
+  pop r7
+  cmp r7, r3
+  je walk_hex.end
+  push r7
+  jmp walk_hex.loop
+
+walk_hex.end:
+  ldi r0, '\n'
+  call console_emitchar
+  clf
+  ret
+
+file_not_found:
+  ldi r0, error_msg_hexdig
+  ldi r1, inputbuf
+  add r1, 7
+  ldi r4, 1
+  call printf
+  clf
+  ret
+  
+error_msg_hexdig:
+  db "hexdig: File not found: '~'", 0
+
+text_msg_hex:
+  db "hex", 0
+
+; Keep this at the bottom of hexdig.x32
+load_addr:

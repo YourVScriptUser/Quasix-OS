@@ -1,0 +1,100 @@
+origin 0x00020000
+; .ef format header
+db 0xAF, 0xFA
+dd 0x00020000
+journ_entp:
+; ptr r0: str
+; chc r1: logtype (1=ok, 2=error, 3=nostatus)
+; No arguments
+journal.log:
+  cmp r1, 1
+  je journal.oklog
+  clf
+
+  cmp r1, 2
+  je journal.erlog
+  clf
+ 
+  cmp r1, 3
+  je journal.nslog
+  clf
+
+  ; Do nothing if logtype was invalid
+  ret
+
+journal.oklog:
+  copy r1, r0
+  ldi r0, log_ok_prefix
+  ldi r4, 1
+
+  call printf
+  clf
+  ret
+
+journal.erlog:
+  copy r1, r0
+  ldi r0, log_er_prefix
+  ldi r4, 1
+
+  call printf   
+  clf
+  ret
+
+journal.nslog:
+  copy r1, r0
+  ldi r0, log_ns_prefix
+  ldi r4, 1
+
+  call printf
+  clf
+  ret
+
+; Just print the ok prefix, no log
+journal.okpref:
+  push r0 
+  push r4
+  ldi r0, log_ok_prefix_n
+  ldi r4, 0
+  call printf
+  pop r4
+  pop r0
+  ret
+
+; Just print the !! prefix, no log
+journal.erpref:
+  push r0 
+  push r4
+  ldi r0, log_er_prefix_n
+  ldi r4, 0
+  call printf
+  pop r4
+  pop r0
+  ret
+
+; Just print the black space prefix, no log
+journal.nspref:
+  push r0 
+  push r4
+  ldi r0, log_ns_prefix_n
+  ldi r4, 0
+  call printf
+  pop r4
+  pop r0
+  ret
+
+;  130: RED,
+;  131: GREEN,
+;  132: BLUE,
+;  133: BRIGHT_BLACK,
+;  134: CYAN,
+;  135: BG_RED,
+;  136: RESET
+log_ok_prefix:  db 132, "(", 131, "ok", 132, ")", 133, " ~", 136, 0
+log_er_prefix:  db 132, "(", 130, "!!", 132, ")", 133, " ~", 136, 0
+log_ns_prefix:  db "    ", 133, " ~", 136, 0
+
+log_ok_prefix_n:  db 132, "(", 131, "ok", 132, ") ", 133, 0
+log_er_prefix_n:  db 132, "(", 130, "!!", 132, ") " , 133, 0
+log_ns_prefix_n:  db "     ", 133, 0
+
+journ_endp:

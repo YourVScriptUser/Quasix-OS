@@ -1,0 +1,17 @@
+origin 0x00070000
+db 0xAF, 0xFA
+dd 0x00070000
+
+ldi r0, fname
+ldi r1, fname_load
+call qboot_load_raw_file
+ldi r0, fname_load
+ldi r4, 1
+call printf
+ret
+ 
+fname:
+  db "about.txt", 0
+
+fname_load:
+
