@@ -2,6 +2,7 @@
 OS Source for the VSK-32 in x32 Assembly
 
 To compile, navigate to the VSK-32 root folder
+Rename `fiex` to `.fiex` and move it to `\Quasix\com`. It wont compile without this file.
 
 Run this command, and fill in the paths.
 
