@@ -1,0 +1,22 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+call time_since_PIT_sync
+ldi r1, text_pool
+call ascii_r0
+ldi r0, time_msg
+ldi r1, text_pool
+ldi r4, 1
+call printf
+; FIX: Clear text_pool
+ldi r0, text_pool
+ldi r1, 32
+ldi r2, 0
+call memset
+ret
+
+time_msg:
+  db "~ Seconds since PIT sync", 0

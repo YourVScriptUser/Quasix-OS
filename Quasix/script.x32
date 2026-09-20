@@ -1,0 +1,141 @@
+autonoexport
+origin 0x00600000 ; FIX: Load this memory into high memory so it cannot be overwritten by its own command files
+db 0xAF, 0xFA
+dd 0x00600000 
+db 0xF0, 0x0D
+; Shell script runner
+; shell.x32's heart has been ripped out and pasted in here
+
+; skip over 'script '
+ldi r0, inputbuf
+add r0, 7
+ldi r1, script_load_file_address
+ldi r7, 0
+call qboot_load_raw_file
+cmp r0, 1
+je fnf_err_script
+jmp script_file_run_loop
+
+run_script_file.bad_magic:  
+  pop r0 
+  xor r0, r0
+  ldi r0, err_mag
+  ldi r4, 1
+  call printf
+  jmp script_file_run_loop.EOF
+
+run_script_file.script_error:
+  pop r0 
+  xor r0, r0
+  ldi r0, err_com
+  ldi r1, commandbuf
+  ldi r4, 1
+  call printf
+  jmp script_file_run_loop.EOF
+
+run_script_file:
+  push r0
+ 
+  ; Trim off a space if args are needed
+  ldi r0, inputbuf
+  ldi r1, ' '
+  ldi r2, commandbuf
+  ldi r3, 30
+  call right_extract
+
+  ldi r0, inputbuf
+  rb r1, [r0]
+  cmp r1, 0
+  je command_return_script
+
+  ldi r0, commandbuf
+  ldi r7, 0
+  call qboot_load_ef_file
+  cmp r0, 1
+  je run_script_file.script_error
+
+  rb r0, [r6]
+  cmp r0, 0xF0
+  jne run_script_file.bad_magic
+
+
+  add r6, 1
+  rb r0, [r6]
+  cmp r0, 0x0D
+  jne run_script_file.bad_magic
+
+  push command_return_script
+  add r6, 1
+  jmp r6
+
+  command_return_script:
+    ldi r0, commandbuf
+    ldi r1, 30
+    ldi r2, 0
+    call memset
+
+    ldi r0, inputbuf
+    ldi r1, 1024
+    ldi r2, 0
+    call memset   
+
+    pop r0
+    ldi r2, inputbuf
+    jmp script_file_run_loop.inject_fake_input
+
+fnf_err_script:
+  ldi r0, fnf_3  
+  ldi r1, inputbuf
+  add r1, 7
+  ldi r4, 1
+  call printf
+  ret
+
+fnf_3:
+  db "script: File '~' not found.", 0
+
+err_com:
+  db "script: Invalid command '~'", 0
+
+err_mag:
+  db "script: Internal file error (bad magic)", 0
+
+; inject bytes into inputbuf 
+
+script_file_run_loop:
+  ldi r0, commandbuf
+  ldi r1, 30
+  ldi r2, 0
+  call memset  
+
+  ldi r0, inputbuf
+  ldi r1, 1024
+  ldi r2, 0
+  call memset     
+
+  ldi r2, inputbuf
+  ldi r0, script_load_file_address
+  
+script_file_run_loop.inject_fake_input:
+  ; write the command, terminating on \n and ignoring \r and treaing 0x00 as EOF
+  rb r1, [r0]
+  add r0, 1
+  cmp r1, '\r'
+  je script_file_run_loop.inject_fake_input
+  clf
+  cmp r1, '\n'
+  je run_script_file
+  clf
+  cmp r1, 0
+  je script_file_run_loop.EOF
+  clf
+  wb  [r2], r1
+  add r2, 1
+  jmp script_file_run_loop.inject_fake_input
+
+script_file_run_loop.EOF:
+  clf
+  ret
+
+; Keep this at the bottom of script.x32
+script_load_file_address:

@@ -1,3 +1,4 @@
+autonoexport
 origin 0x00060000
 db 0xAF, 0xFA
 dd 0x00060000
@@ -8,4 +9,4 @@ call printf
 ret
 
 help_msg:
-  db 133, "help clear ls run echo hexdig cat", 136, 0
+  db 133, "help clear ls run echo hexdig cat dsk uptime ftype ver script rm touch sleep mem free", 136, 0

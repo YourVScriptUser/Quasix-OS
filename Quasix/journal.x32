@@ -1,3 +1,10 @@
+global journal.log
+global journal.erpref
+global journal.nspref
+global journal.okpref
+global journ_entp
+global journ_endp
+
 origin 0x00020000
 ; .ef format header
 db 0xAF, 0xFA

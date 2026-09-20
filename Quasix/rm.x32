@@ -1,0 +1,32 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; Skip past 'rm '
+ldi  r0, inputbuf
+add  r0, 3
+call qboot_delete_file
+cmp  r0, 1
+je   rm_fnf
+jmp  rm_suc
+
+rm_fnf:
+  ldi r1, inputbuf  
+  add r1, 3
+  ldi r0, rm_msg_fnf
+  ldi r4, 1
+  call printf
+  ret
+
+rm_suc:
+  ldi r1, inputbuf  
+  add r1, 3
+  ldi r0, rm_msg_suc
+  ldi r4, 1
+  call printf
+  ret
+
+rm_msg_fnf: db "rm: File not found: '~'", 0
+rm_msg_suc: db "rm: The file '~' has been deleted", 0

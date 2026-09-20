@@ -1,6 +1,13 @@
+global inputbuf
+global commandbuf
+global shell_loop
+global shell_entp
+global shell_endp
+
 origin 0x00030000
 db 0xAF, 0xFA
 dd 0x00030000
+shell_entp:
 ; Batch of newlines (freshly cooked, straight out of the oven)
 call printf.newline
 call printf.newline
@@ -94,6 +101,7 @@ shell_prompt:
 commandbuf:
   dd 0, 0, 0, 0
 
+shell_endp:
 ; Keep this at the bottom of shell.x32
 inputbuf:
 

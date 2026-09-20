@@ -1,3 +1,12 @@
+global qboot_load_ef_file
+global qboot_load_raw_file
+global qboot.file_exist
+global qboot_ldisk
+global qboot.str_compare
+global early_print
+global early_newline
+global get_next_video
+
 origin 0x00007000 ; Address that .boot.x32 loads this
 ; .ef file format (Executable Format) (Not to be confused from .elf, this is completley different.)
 ;  Expected to start with 0xAF, 0xFA (0xAFFA)
@@ -32,8 +41,18 @@ qboot:
   cmp r0, 2 
   je kernel_header_invalid
   clf
+  push r6
 
-  jmp r6
+  ldi r0, read_disk_status
+  call early_print
+
+  ldi r0, disk_file_name
+  ldi r7, 1
+  call qboot_load_ef_file
+  
+  pop  r6
+  jmp  r6
+ 
 
 
 kernel_header_invalid:
@@ -251,7 +270,6 @@ qboot_load_ef_file.header_invalid:
 
 ;  ptr r0: str name
 ;  ptr r1: where to load the file
-;  chc r7: print status '.' as it goes along
 ;  ret r0: status
 ;  ret r7: size (in bytes)
 qboot_load_raw_file:
@@ -262,7 +280,6 @@ qboot_load_raw_file:
   call qboot.file_exist ; qboot.file_exist takes the string name in r0, no need for copy.
   cmp r0, 0          ; compare return against 0
   je qboot_load_raw_file.file_nonexist ; If the file does not exist (r0 was 0)
-  call qboot_load_raw_file.print_st
   call qboot_ldisk ; refresh filesystem
   xor r2, r2 ; r2 = Current (VAR)
   ldi r3, 0x0F000000 ; r3 = Pointer (VAR)
@@ -312,12 +329,13 @@ qboot_load_raw_file.loop:
   ; Calculate end sector
   add r4, r2  ; End sector = Start sector + Sector length - 1 (minus 1 because its not inclusive of end)
   sub r4, 1
-  call qboot_load_raw_file.print_st
   ; from earlier, r8 is file string address
      
   ; haha no more .ef handling BOZO
   jmp qboot_load_raw_file.do_load_loop
   
+; Lets just fucking hack down the r7 trace handling by cutting off its limbs
+
 ; r2 = Sector
 ; r9 = Load address
 qboot_load_raw_file.do_load:
@@ -325,25 +343,7 @@ qboot_load_raw_file.do_load:
   copy r0, r2  ; SWI sector  
   copy r1, r9  ; SWI load address
   int 0x05    
-  call qboot_load_raw_file.print_st
   ret
-
-qboot_load_raw_file.print_st:
-  cmp r7, 1
-  je qboot_load_raw_file.print_st_do
-  print_st_do_resume2:
-  ret
-
-qboot_load_raw_file.print_st_do:
-  cmp r7, 0
-  je print_st_do_resume2
-  push r1
-  ldi r0, STATUS_DOT
-  call early_print
-  pop r1
-  jmp print_st_do_resume2
-
-
 
 ; r2 = starting sector
 ; r4 = end sector
@@ -366,12 +366,6 @@ qboot_load_raw_file.do_load_loop:
   jmp qboot_load_raw_file.do_load_loop
 
 qboot_load_raw_file.done:
-  cmp r7, 0
-  je skip01
-  ldi r0, STATUS_DUN
-  call early_print
-  call early_newline
-  skip01:
   ldi r0, 0
   ; you dont GET an entrypoint 
   ; HEHEHE
@@ -380,30 +374,19 @@ qboot_load_raw_file.done:
   jmp die_now
 
 qboot_load_raw_file.file_nonexist:
-  cmp r7, 0
-  je skip11
-  ldi r0, STATUS_EXC
-  call early_print
-  call early_newline
   skip11:
   ldi r0, 1
   clf
   ret
 
 qboot_load_raw_file.header_invalid:
-  pop r4 ; FIX: r2 and r4 were still on the stack
-  pop r2
-  cmp r7, 0
-  je skip22
-  ldi r0, STATUS_EXC
-  call early_print
-  call early_newline
   skip22:
   ldi r0, 2
   clf 
   ret
 
 ; ret/ptr r0: status / str name
+; returns 1 if it exists and 0 if not
 qboot.file_exist:
   push r0
   call qboot_ldisk ; FIX: self-explanatory, i think.
@@ -551,7 +534,9 @@ get_next_video.end:
   
 
 kernel_file_name:     db "qenv32.ef", 0
+disk_file_name:       db "disk.lib", 0
 kernel_load_status:   db "filesystem read success\n", "read qenv32.ef", 0
+read_disk_status:     db "read disk.lib", 0
 kernel_header_error:  db "Q-Boot: kernel file header invalid", 0
 kernel_missing_error: db "Q-Boot: kernel not found", 0
 stack_msg:            db "Q-Boot: rsp moved to 0x000f0000", 0

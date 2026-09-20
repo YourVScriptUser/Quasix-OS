@@ -1,0 +1,249 @@
+global qboot_delete_file
+global qboot_write_raw_file
+global disk_entp
+global disk_endp
+
+origin 0x00025000
+db 0xAF, 0xFA
+dd 0x00025000
+disk_entp:
+; Erases a metadata file entry
+; ptr r0: File name
+; ret r0: return code (0=success, 1=file not found)
+qboot_delete_file:
+  push r0
+  call qboot.file_exist  
+  cmp  r0, 0
+  je   qboot_delete_file.fnf
+
+  call qboot_ldisk
+  pop  r0
+  copy r8, r0
+  ldi r3, 0x0F000000
+  jmp qboot_delete_file.ensure_exists
+  
+qboot_delete_file.ensure_exists:
+  ; ============ copied verbatim from qboot_load_raw_file ============
+
+  ; Get current byte
+  rb r2, [r3]
+  ; Increment pointer
+  add r3, 1
+
+  ; If it is not a file entry descriptor, then repeat
+  cmp r2, 0xFE
+  jne qboot_delete_file.ensure_exists
+  clf
+
+  ; If there is one, skip forward 9 times to compare the file name
+  ; Then subtract by 9 to get back to where we were
+  add r3, 9
+  ; r8 is the string name pointer
+  ; Preserve regs
+  push r2
+  push r3
+  copy r0, r8     ; Copy current SSFS pointer into the arguments for qboot.str_compare
+  copy r1, r3     ; This was a fix, didn't realise when i added the two copy instructions.
+  call qboot.str_compare ; Sets r0
+  pop r3
+  pop r2
+  ; If r0 is 0, then go back to loop because that means the file is not the file we are looking for
+  cmp r0, 0
+  je qboot_delete_file.ensure_exists
+  clf
+
+  ;  ============ end of verbatim copy ============
+
+  ; If not, we have found the file
+  ; Wind r3 back by 10 to get to the start of the entry
+  sub  r3, 10
+  ; Store the end of the entry
+  copy r21, r3
+  add  r21, 30
+  ; Then erase it
+  jmp qboot_delete_file.erase_loop 
+  qboot_delete_file.erase_loop_return:
+    ; Now wind back every byte in the metadata so we dont leave mega gaping holes in the metadata
+    copy r0, r21 
+    copy r2, r21
+    sub r2, 30
+    jmp qboot_delete_file.cascade_metadata_loop
+  
+ 
+qboot_delete_file.erase_loop:
+  ldi r1, 0
+  wb  [r3], r1
+  add r3, 1
+  cmp r3, r21
+  je  qboot_delete_file.erase_loop_return
+  jmp qboot_delete_file.erase_loop
+  
+qboot_delete_file.cascade_metadata_loop:
+  cmp r0, 0x0F000400 ; end of metadata load address
+  je  qboot_delete_file.suc
+  rb  r1, [r0]
+  wb  [r2], r1
+  add r0, 1
+  add r2, 1
+  jmp qboot_delete_file.cascade_metadata_loop
+  
+
+qboot_delete_file.suc:
+  ; Write new metadata
+  ldi  r0, 4
+  ldi  r1, 0x0F000000
+  int  0x06
+  
+  ldi r0, 0
+  clf
+  ret
+
+qboot_delete_file.fnf:
+  pop r0
+  xor r0, r0
+  ldi r0, 1
+  clf
+  ret
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+; Copies a block of memory to a sector and crafts a new metadata entry
+; ptr r0: New file name
+; arg r1: Length of sectors to populate
+; ptr r2: Memory source address
+qboot_write_raw_file: 
+  push r1
+  push r0
+  call qboot_ldisk ; Write changes to a in-memory metadata table first, then overwrite directory sector 4 with it
+  pop  r0
+  pop  r1 
+  copy r21, r2 ; copy of src preserved accross this routine
+  ldi  r2, 0x0F000000 ; our pointer to metadata
+  jmp qboot_write_raw_file.metadata_stage
+
+qboot_write_raw_file.metadata_stage:
+  ; Find the last occupied sector by counting down
+  copy r3, r2
+  add  r3, 1024
+  jmp qboot_write_raw_file.metadata_stage.down_loop
+
+qboot_write_raw_file.metadata_stage.down_loop:
+  ; Keep counting down until we hit 0xFD (file descriptor byte)
+  rb   r4, [r3]
+  sub  r3, 1
+  cmp  r4, 0xFD
+  jne  qboot_write_raw_file.metadata_stage.down_loop
+  copy r6, r3
+  add  r6, 22 ; r6 now equals the address of the next available slot
+  ; If it is 0xFD go down 8 more bytes to find start sector
+  sub  r3, 7
+  mov  r4, [r3] ; r4 = start sector
+  ; now go up by 4 to find sector length, then calculate next available sector by doing start sector + length in sectors (this is fine since files are appended, there is no fragmentation handling. This is intentional.)
+  add  r3, 4
+  mov  r5, [r3] ; r5 = length in sectors
+  add  r4, r5 ; start + length = next available (length is inclusive of start)
+             ; r4 = next available sector
+
+  ; Done, we have found the next available sector and next available slot 
+  ; Now preserve r4 and find the nex
+  ; r4 = next available sector
+  ; r6 = next available slot address
+  jmp qboot_write_raw_file.build_entry  
+
+; Directory (sector 4) entry format, 30 bytes each, up to 34 entries:
+;    offset  size  field
+;    0       1     0xFE  (File Entry magic)
+;    1       4     start sector
+;    5       4     length in sectors
+;    9       1     0xFD  (File Descriptor magic)
+;    10      20    filename, ASCII, NUL-padded
+
+qboot_write_raw_file.build_entry:
+  ; Now that r4 and r6 have important things in them, build the new metadata entry
+  ; Write file entry byte
+  ldi r2, 0xFE
+  wb  [r6], r2
+  add r6, 1
+  ; Write dword start sector
+  mov [r6], r4
+  ; Write our argument for length in sectors
+  add r6, 4
+  mov [r6], r1
+  ; Write file descriptor
+  add r6, 4
+  ldi r2, 0xFD
+  mov [r6], r2
+  add r6, 1 ; point r6 to the base address of the file name (offset 10)
+  ; Now deal with the filename with 20-byte padding
+  ldi r2, 20 ; size of entry
+  jmp qboot_write_raw_file.inject_fname  
+
+qboot_write_raw_file.inject_fname:
+  rb  r3, [r0]
+  cmp r3, 0
+  je  qboot_write_raw_file.inject_0pad
+  add r0, 1
+  sub r2, 1
+  wb  [r6], r3
+  add r6, 1
+  jmp qboot_write_raw_file.inject_fname
+  
+
+qboot_write_raw_file.inject_0pad:
+  ; inject padding until r2 becomes 0
+  ldi r3, 0
+  wb  [r6], r3
+  add r6, 1
+  sub r2, 1
+  cmp r2, 0
+  je  qboot_write_raw_file.write_stage
+  jmp qboot_write_raw_file.inject_0pad
+
+qboot_write_raw_file.write_stage:
+  copy r2, r21
+  ; calculate the sectors needed to write by arg sector len + start sector
+  copy r5, r4 
+  add  r5, r1
+  jmp  qboot_write_raw_file.do_sector_write
+
+qboot_write_raw_file.do_sector_write:
+  ; r5 equals next available sector (from earlier) - loop over it until it hits 0
+  ; r21 is the src memory address from when this routine was first entered
+  cmp r5, r4
+  je  qboot_write_raw_file.done
+  jmp qboot_write_raw_file.sector_write
+  
+
+qboot_write_raw_file.sector_write:
+  copy r0, r4
+  copy r1, r2
+  int  0x06 
+  add  r2, 1024
+  add  r4, 1 
+  jmp qboot_write_raw_file.do_sector_write
+
+qboot_write_raw_file.done:
+  ; Write new metadata
+  ldi r0, 4
+  ldi r1, 0x0F000000
+  int 0x06
+
+  clf
+  ret
+  
+disk_endp:

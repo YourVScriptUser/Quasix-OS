@@ -1,0 +1,218 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; Allocation table, size=512B, up to 17 entries format:
+; [start:dword][size:dword][name:[bytes:20]][flags:byte]
+; Flags:
+;  1=Allocated
+;  2=Deallocated
+
+ldi  r0, text_pool
+ldi  r1, 32
+ldi  r2, 0
+call memset
+ldi r5, alloc_table
+jmp read_loop
+
+read_loop:
+  ; read start
+  mov  r0, [r5]
+  cmp  r0, 0
+  ; read size
+  add  r5, 4
+  mov  r1, [r5] ; treat size being 0 as end of table
+  cmp  r1, 0
+  je   read_loop.end
+  add  r5, 4
+  ; save name pointer
+  copy r6, r5
+  ; read flags 
+  add  r5, 20
+  rb   r2, [r5]
+  add  r5, 1
+  jmp  read_loop.print_info 
+
+; Procede with causion: horrible code and stack fucking ahead
+
+read_loop.print_info:
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  push r6
+ 
+  ldi  r0, .name
+  ldi  r4, 0
+  call printf
+  pop  r6
+  push r6
+
+  copy r0, r6 
+  ldi  r4, 1
+  call printf
+  
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+  
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  copy r7, r0
+  push r7
+  push r6
+
+  ldi  r0, .entry
+  ldi  r4, 0
+  call printf
+  pop  r6 
+  pop  r0
+  push r6
+
+  ldi  r1, text_pool
+  call hex_r0
+
+  ldi  r0, text_pool
+  ldi  r4, 1
+  call printf
+
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  push r6 
+
+  ldi  r0, text_pool
+  ldi  r1, 32
+  ldi  r2, 0
+  call memset
+
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  push r6 
+  push r1
+
+  ldi  r0, .size
+  ldi  r4, 0
+  call printf
+
+  pop  r0
+  ldi  r1, text_pool
+  call ascii_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+
+  ldi  r0, .bytes
+  ldi  r4, 1
+  call printf
+
+  ldi  r0, text_pool
+  ldi  r1, 32
+  ldi  r2, 0
+  call memset
+
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  push r6
+  push r2
+
+  ldi  r0, .state
+  ldi  r4, 0
+  call printf
+
+  pop  r0
+  ldi  r1, text_pool
+  call ascii_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+
+  ldi  r0, text_pool
+  ldi  r1, 32
+  ldi  r2, 0
+  call memset
+
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+  push r0 
+  push r1 
+  push r2 
+  push r3
+  push r4 
+  push r5
+  push r6
+  call printf.newline ; push all these registers just for a shitty frigging newline we do eht
+  ldi  r0, text_pool
+  ldi  r1, 32
+  ldi  r2, 0
+  call memset
+  pop  r6 
+  pop  r5 
+  pop  r4 
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+  jmp read_loop
+
+read_loop.end:
+  clf
+  ret
+
+
+.name:   db "Name: ", 0
+.entry:  db " Address: ", 0
+.size:   db " Size: ", 0
+.bytes:  db " Bytes", 0
+.state:  db " State: ", 0

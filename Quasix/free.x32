@@ -1,0 +1,32 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; skip past 'free '
+ldi  r0, inputbuf
+add  r0, 5
+call free
+cmp  r0, 0
+je   do_suc
+jmp  do_enf
+
+do_enf:
+  ldi r0, enf
+  ldi  r1, inputbuf
+  add  r1, 5
+  ldi r4, 1
+  call printf
+  ret
+
+do_suc:
+  ldi r0, suc
+  ldi  r1, inputbuf
+  add  r1, 5  
+  ldi r4, 1
+  call printf
+  ret
+
+enf: db "free: Entry not found: '~'", 0
+suc: db "free: Deallocated '~'", 0

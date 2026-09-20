@@ -1,0 +1,44 @@
+autonoexport
+origin 0x00070000
+db 0xAF, 0xFA
+dd 0x00070000
+
+ldi r2, 0
+ldi r3, 0
+jmp port_loop
+
+port_loop: 
+  in   r0, r2
+  push r2 
+  push r3
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+  pop  r3
+  pop  r2
+  add  r2, 1
+  cmp  r2, 256
+  je   end
+  add  r3, 1
+  cmp  r3, 7
+  je   nl
+  jmp  port_loop
+  
+nl:
+  call printf.newline
+  ldi r3, 0
+  jmp port_loop
+  
+
+end:
+  ldi r0, text_pool
+  ldi r1, 32
+  ldi r2, 0
+  call memset
+  call printf.newline
+  clf 
+  ret

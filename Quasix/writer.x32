@@ -1,0 +1,106 @@
+autonoexport
+origin 0x00070000
+db 0xAF, 0xFA
+dd 0x00070000
+
+ldi  r0, header_msg
+ldi  r4, 1
+call printf
+ldi  r5, writer_write_location ; current pointer
+ldi  r6, 0                     ; total bytes typed
+call enable_video_cursor
+jmp  writer_loop 
+
+writer_loop:
+  push r5
+  push r6
+  copy r0, r5
+  call readline
+  pop  r6
+  pop  r5
+  push r5
+  push r6
+  copy r0, r5
+  ldi  r1, exit_text
+  ldi  r2, 0
+  call strcmp
+  cmp  r0, 1
+  je   writer_done
+  pop  r6
+  pop  r5
+  copy r0, r5
+  ldi  r1, 0
+  call strlen
+  add  r5, r0
+  add  r6, r0
+  copy r0, r5
+  ldi  r0, '\n' 
+  add  r6, 1
+  wb   [r5], r0 
+  add  r5, 1
+  jmp  writer_loop
+
+writer_done:
+  pop  r6
+  pop  r5  
+  ldi  r0, 0
+  wb   [r5], r0
+  sub  r5, 1
+  wb   [r5], r0
+  sub  r5, 1
+  cmp  r6, 0 ; FIX: just typing [exit] with nothing else caused everything to fucking die
+  je   kill_early
+  copy r0, r6
+  ldi  r1, 0
+  ldi  r2, 1024
+  ldi  r3, 1
+  jmp  writer_done.read_sector_loop
+
+writer_done.read_sector_loop:
+  add r1, 1
+  cmp r1, r0 
+  je  writer_done.end
+  cmp r1, r2 
+  jne writer_done.read_sector_loop
+  add r2, 1024
+  add r3, 1
+  jmp writer_done.read_sector_loop
+
+writer_done.end:
+  call disable_video_cursor
+  push r3 
+  call printf.newline
+  ldi  r0, fname_msg
+  ldi  r4, 0
+  call printf
+  pop  r3
+  push r3
+  ldi  r0, fname_enter
+  call readline
+  pop  r3
+  ldi  r0, fname_enter
+  copy r1, r3
+  ldi  r2, writer_write_location
+  call touchfile
+  call printf.newline
+  clf
+  ret
+
+kill_early:
+  clf
+  ret
+
+header_msg:
+  db "Welcome to Quasix Writer\n"
+  db "Press enter to start a new line\n"
+  db "Type '[exit]' to exit"
+
+  db 0
+
+fname_msg: db "\nEnter file name: ", 0
+
+exit_text: db "[exit]", 0
+
+fname_enter: zerofill 20
+
+writer_write_location:

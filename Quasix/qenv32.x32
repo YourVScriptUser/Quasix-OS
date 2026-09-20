@@ -1,8 +1,35 @@
+; fucking global mess
+global panic
+global printf
+global printf.newline
+global readline
+global read_console_cursor
+global write_console_cursor
+global memcpy
+global strlen
+global strcmp
+global memset
+global touchfile
+global enable_video_cursor
+global disable_video_cursor
+global right_extract
+global console_emitchar
+global clearscreen
+global gen_disk_report
+global text_pool
+global files_present
+global hex_r0
+global ascii_r0
+global sleep
+global time_since_PIT_sync
+global alloc
+global alloc_table
+global free
+
 origin 0x00010000
 ; .ef format header
 db 0xAF, 0xFA
 dd 0x00010000
-
 ; i lost my sanity righting this
 ; procede with caution
 
@@ -13,7 +40,40 @@ dd 0x00010000
 kern_entp:
 jmp kern_startup
 
+excep_count: db 0
+
+add_excep_count:
+  push r0  
+  push r1
+  ldi r0, excep_count
+  rb r1, [r0]
+  add r1, 1
+  wb [r0], r1
+  pop r1 
+  pop r0
+  ret
+
+reset_excep_count:
+  push r0 
+  push r1
+  ldi r0, excep_count
+  ldi r1, 0
+  wb [r0], r1
+  pop r1 
+  pop r0
+  ret
+
+; ret r0: Fault count
+read_excep_count:
+  push r1 
+  ldi r0, excep_count
+  rb r1, [r0]
+  copy r0, r1
+  pop r1
+  ret 
+
 excep_memory:
+  call add_excep_count
   copy r4, r0
   copy r5, r1
   ; the exception return is inside kernel memory / journaler, that means the exception happened inside the kernel, cause a panic if that happens.
@@ -34,11 +94,17 @@ excep_memory:
   ldi r1, text_pool
   ldi r0, error_mem
   ldi r4, 1
-  call printf 
+  call printf
+  ; now that the error info has been printed and we know the shell could be in a corrupt state, reload shell.ef
+  ldi r7, 0
+  ldi r0, shl_file_name
+  call qboot_load_ef_file
+
   jmp shell_loop ; If the error occoured in usermode, maybe GO BACK TO USERMODE INSTEAD OF RETURNING AT THE EXACT ADDRESS THAT THE ERROR OCCOURED
   ; FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCCCCCCCCCCCCCCCCCKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
 
 excep_unknown_opcode:
+  call add_excep_count
   copy r4, r0
   copy r5, r1
   ; the exception return is inside kernel memory / journaler, that means the exception happened inside the kernel, cause a panic if that happens.
@@ -60,10 +126,80 @@ excep_unknown_opcode:
   ldi r0, error_unknown_op
   ldi r4, 1
   call printf 
+  ; now that the error info has been printed and we know the shell could be in a corrupt state, reload shell.ef
+  ldi r7, 0
+  ldi r0, shl_file_name
+  call qboot_load_ef_file
+
   jmp shell_loop ; If the error occoured in usermode, maybe GO BACK TO USERMODE INSTEAD OF RETURNING AT THE EXACT ADDRESS THAT THE ERROR OCCOURED
   ; FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCCCCCCCCCCCCCCCCCCCCCCCKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
 
+; Raises a kernel panic
+; Expects journal library and most kernel routines to be in a working state
 panic:
+  push r0 
+  push r1
+
+  ldi  r0, r0_save ; we can't actually save r0, but still do this because... why not
+  mov  [r0], r0
+  ldi  r0, r1_save
+  mov  [r0], r1
+  ldi  r0, r2_save
+  mov  [r0], r2
+  ldi  r0, r3_save
+  mov  [r0], r3
+  ldi  r0, r4_save
+  mov  [r0], r4
+  ldi  r0, r5_save
+  mov  [r0], r5
+  ldi  r0, r6_save
+  mov  [r0], r6
+  ldi  r0, r7_save
+  mov  [r0], r7
+  ldi  r0, r8_save
+  mov  [r0], r8
+  ldi  r0, r9_save
+  mov  [r0], r9
+  ldi  r0, r10_save
+  mov  [r0], r10
+  ldi  r0, r11_save
+  mov  [r0], r11
+  ldi  r0, r12_save
+  mov  [r0], r12
+  ldi  r0, r13_save
+  mov  [r0], r13
+  ldi  r0, r14_save
+  mov  [r0], r14
+  ldi  r0, r15_save
+  mov  [r0], r15
+  ldi  r0, r16_save
+  mov  [r0], r16
+  ldi  r0, r17_save
+  mov  [r0], r17
+  ldi  r0, r18_save
+  mov  [r0], r18
+  ldi  r0, r19_save
+  mov  [r0], r19
+  ldi  r0, r20_save
+  mov  [r0], r20
+  ldi  r0, r21_save
+  mov  [r0], r21
+  ldi  r0, r22_save
+  mov  [r0], r22
+  ldi  r0, r23_save
+  mov  [r0], r23
+
+
+
+  ldi r0, panic_header  
+  ldi r4, 1
+  call printf
+
+  pop  r1
+  pop  r0
+  push r1
+
+  call printf.newline
   push r1
   push r0
   call journal.erpref
@@ -73,15 +209,397 @@ panic:
   pop r0
   ldi r1, ip_msg_hex
   call hex_r0
-  ldi r0, panic_msg
+  ldi r0, panic_msg0
   ldi r1, ip_msg_hex
   ldi r2, error_msg_hex
   ldi r4, 0
   call printf
-  PLZ_DIE:
+  
+
+
+  call printf.newline
+  call journal.erpref
+  ldi  r0, panic_msg1
+  ldi  r4, 0
+  call printf
+
+  ldi  r1, r0_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r1_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r2_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r3_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r4_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r5_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r6_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r7_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r8_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r9_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  call printf.newline
+  call journal.erpref
+
+  ldi  r1, r10_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r11_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r12_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r13_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r14_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r15_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r16_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r17_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r18_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r19_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r20_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  call printf.newline
+  call journal.erpref
+
+  ldi  r1, r21_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r22_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+
+  ldi  r1, r23_save
+  mov  r0, [r1]
+  ldi  r1, text_pool
+  call hex_r0
+  ldi  r0, text_pool
+  ldi  r4, 0
+  call printf
+
+  ldi  r0, panic_msg2
+  ldi  r4, 0
+  call printf
+
+  pop  r1
+  cmp  r1, 0x0FFFFFAA
+  jh   panic_die      ; if faulting ip > max memory address
+
+  call panic_dump_code_region
+  call printf.newline
+
+  ldi  r0, panic_msg5  
+  ldi  r4, 1
+  call printf
+
+  call enable_video_cursor ; enable this to show the user that the system is not waking up
+  panic_die:
     cli
     hlt
-    jmp PLZ_DIE
+    jmp panic_die
+
+  
+panic_dump_code_region:
+  push r1 
+  call printf.newline
+  call journal.erpref
+  ldi  r0, panic_msg3
+  ldi  r4, 0
+  call printf
+  pop  r1
+  copy r5, r1
+  copy r2, r1  
+  sub  r2, 85
+  copy r3, r1
+  add  r3, 85
+  jmp panic_dump_code_region.loop
+  
+panic_dump_code_region.found_fault_byte:
+  push r0 
+  ldi  r0, right_brack
+  ldi  r4, 0
+  call printf
+  pop  r0
+  ldi  r1, text_pool
+  call hex_r0 
+  ldi  r0, text_pool  
+  add  r0, 6
+  ldi  r4, 0
+  call printf
+  ldi  r0, left_brack
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+  jmp  sb_return
+
+
+panic_dump_code_region.loop:
+  add  r4, 1
+  rb   r0, [r2]
+  push r2 
+  push r3 
+  push r4
+  push r5
+  cmp  r2, r5 
+  je   panic_dump_code_region.found_fault_byte
+  ldi  r1, text_pool
+  call hex_r0 
+  ldi  r0, text_pool  
+  add  r0, 6
+  ldi  r4, 0
+  call printf
+  ldi  r0, ' '
+  call console_emitchar
+  sb_return:
+    pop  r5
+    pop  r4
+    pop  r3 
+    pop  r2
+    cmp  r2, r3 
+    je   panic_dump_code_region.done
+    add  r2, 1
+    cmp  r4, 20
+    jh   panic_dump_code_region.newline
+    jmp  panic_dump_code_region.loop
+  
+panic_dump_code_region.newline:
+  push r2 
+  push r3 
+  push r4
+  push r5
+  call printf.newline
+  call journal.erpref
+  pop  r5
+  pop  r4
+  pop  r3 
+  pop  r2
+  ldi  r4, 0
+  jmp  panic_dump_code_region.loop
+
+panic_dump_code_region.done:
+  ldi r0, panic_msg4
+  ldi r4, 1
+  call printf
+
+  clf
+  ret 
+
+  
+r0_save: dd 0
+r1_save: dd 0
+r2_save: dd 0
+r3_save: dd 0
+r4_save: dd 0
+r5_save: dd 0
+r6_save: dd 0
+r7_save: dd 0
+r8_save: dd 0
+r9_save: dd 0
+r10_save: dd 0
+r11_save: dd 0
+r12_save: dd 0
+r13_save: dd 0
+r14_save: dd 0
+r15_save: dd 0
+r16_save: dd 0
+r17_save: dd 0
+r18_save: dd 0
+r19_save: dd 0
+r20_save: dd 0
+r21_save: dd 0
+r22_save: dd 0
+r23_save: dd 0
   
   
 ; SO GENEROUS DD 
@@ -170,6 +688,174 @@ strcmp.end:
   clf
   ret
 
+; Frees a allocated region from the name of the region
+; ptr r0: Region name
+; ret r0: status (0=good, 1=entry not found)
+free:
+  ldi r1, alloc_table
+  add r1, 8 ; +8 to get to first string entry
+  jmp free.scan
+
+free.scan:
+  ; compare current entry against the given one
+  push r0 
+  push r1
+  ldi  r2, 0
+  call strcmp
+  cmp  r0, 1 
+  je   free.found
+  pop  r1 
+  pop  r0
+  add  r1, 29
+  ; if the next entry does not exist, the entry was not found
+  rb   r4, [r1]
+  cmp  r4, 0
+  je   free.enf
+  jmp  free.scan
+
+free.found:
+  ; these are still on the stack
+  pop  r1
+  pop  r0
+  
+  ; r1 should point at the string entry of the found allocation
+  sub  r1, 8
+  ; read start address
+  mov  r2, [r1]
+  add  r1, 4
+  ; read size
+  mov  r3, [r1]  
+  ; if it is already cleared (flags is 2) - then say we could not find the entry
+  copy r5, r1
+  add  r5, 24
+  rb   r4, [r5]
+  cmp  r4, 2
+  je   free.enf
+
+  ; now wipe
+  jmp free.wipe
+
+free.wipe:
+  push r1
+  copy r0, r2
+  copy r1, r3
+  ldi  r2, 0
+  call memset ; this is now memset()'s fucking problem
+  pop  r1
+  ; r1 points to string base, increment by 28 to get to flags
+  add  r1, 24
+  ldi  r2, 2
+  wb   [r1], r2
+  jmp  free.end
+
+free.enf:
+  ldi r0, 1
+  clf
+  ret
+
+free.end:
+  ldi r0, 0
+  clf
+  ret
+  
+
+; Allocation table, size=512B, up to 17 entries format:
+; [start:dword][size:dword][name:[bytes:20]][flags:byte]
+; Flags:
+;  1=Allocated
+;  2=Deallocated
+
+; Allocates one region of memory to the table
+; ptr r0: Region name
+; arg r1: Start
+; arg r2: Size
+alloc:
+  push r0
+  push r1
+  push r2
+  ldi  r1, 0
+  call strlen ; ensure size is within 20 bytes
+  cmp  r0, 19 ; 19+\x00
+  jh   alloc_size_error 
+  pop  r2
+  pop  r1
+  pop  r0
+
+  push r0 
+  push r1
+  push r2
+  call alloc_find_next_entry  
+  copy r3, r0
+  add  r3, 1
+  pop  r2
+  pop  r1
+  pop  r0
+  ; Step 1: Write start
+  mov  [r3], r1
+  add  r3, 4  
+
+  ; Step 2: Write size
+  mov  [r3], r2
+  add  r3, 4
+  
+  ; Step 3: Copy 20-byte name
+  ldi  r5, 20
+  jmp  alloc_name_loop
+  
+alloc_find_next_entry:
+  ldi r0, alloc_table
+  add r0, 512
+  jmp alloc_find_next_entry.loop
+
+alloc_find_next_entry.loop:
+  rb  r1, [r0]
+  cmp r1, 0
+  jne alloc_find_next_entry.end
+  sub r0, 1
+  jmp alloc_find_next_entry.loop
+
+alloc_find_next_entry.end:
+  clf
+  ret
+
+alloc_name_loop:
+  rb  r4, [r0]
+  cmp r4, 0
+  je  alloc_pad_zero_loop
+  wb  [r3], r4
+  add r3, 1
+  add r0, 1
+  sub r5, 1
+  jmp alloc_name_loop
+
+alloc_pad_zero_loop:
+  ldi r1, 0
+  wb  [r3], r1
+  sub r5, 1
+  add r3, 1
+  cmp r5, 0
+  je  alloc_done
+  jmp alloc_pad_zero_loop
+
+alloc_size_error:
+  ldi  r0, error_alloc_name
+  ldi  r4, 1
+  call printf
+  jmp  alloc_done_skip
+
+alloc_done_skip:
+  clf
+  ret
+  
+alloc_done:
+  ; Write flags
+  ldi r1, 1
+  wb  [r3], r1
+
+  clf
+  ret
+  
+
 ;  System.Exceptions.InvalidOpcodeError.UnknownOpcode: 63
 ;  System.Exceptions.InvalidOpcodeError.InvalidFlags:  62
 ;  System.Exceptions.InvalidRegister:                  61
@@ -178,7 +864,7 @@ strcmp.end:
 ; (Pulled from emulator source code)
 setup_ivt:
   ; group exceptions 61-63+59 together
-  ; TODO: add more exceptions fr
+  ; TODO: add more exceptions fr (this has been here since v1.0.0... fuck)
 
   ldi r0, kernel_log3
   ldi r1, 1
@@ -266,12 +952,17 @@ kern_startup:
   ldi r0, log_file_name
   ldi r7, 1
   call qboot_load_ef_file
+  push r0
   call early_newline
 
   ; Initialize video
   call get_next_video
   ldi r1, console_cursor
   ww  [r1], r0
+  pop r0
+  cmp  r0, 1
+  je   system_file_not_found
+  clf
   
   ldi r0, kernel_log0
   ldi r1, 1
@@ -320,18 +1011,85 @@ kern_startup:
   ldi r0, 0x0B80FFFF
   out r0, 0xDD
 
+  ; Put the kernel in the allocation table
+  ldi  r0, kern_region_name
+  ldi  r1, kern_entp
+  ldi  r2, kern_endp
+  sub  r2, r1
+  call alloc
+
+  ; Fill up the allocation table
+  ldi  r0, shell_region_name
+  ldi  r1, shell_entp
+  ldi  r2, shell_endp
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, bios_region_name
+  ldi  r1, 0x100A ; This is the BIOS entrypoint. I read the source. Trust me bro.
+  ldi  r2, 0x5C00
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, ivt_region_name
+  ldi  r1, 0x0000 
+  ldi  r2, 0xFF 
+  call alloc  
+
+  ldi  r0, disk_region_name
+  ldi  r1, disk_entp 
+  ldi  r2, disk_endp
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, boot_region_name
+  ldi  r1, 0x5C00 
+  ldi  r2, kern_entp
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, pit_region_name
+  ldi  r1, pit_region_start
+  ldi  r2, pit_region_end
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, video_region_name
+  ldi  r1, 0x0B800000
+  ldi  r2, 0x0B80FFFF
+  sub  r2, r1
+  call alloc
+
+  ldi  r0, logger_region_name
+  ldi  r1, journ_entp 
+  ldi  r2, journ_endp
+  sub  r2, r1
+  call alloc
+
   ; load the shell
   ldi r0, shl_file_name
   ldi r7, 0
   call qboot_load_ef_file 
+  cmp  r0, 1
+  je   system_file_not_found
+  clf
   jmp r6
 
+pit_region_start:
 ; The main PIT interrupt handler
 ; Run once a second, then does iret
 kern_loop:
-  call step_clock ; increment kernel clock
-  iret
+  ; If exception count is above 1 (2 exceptions happened this second), the system has fucking died and we must panic immediately!
+  call read_excep_count
+  cmp  r0, 1
+  ldi  r0, 0x00000EED ; 0xEED =  Kernel Loop Watchdog Fault Count error
+  ldi  r1, kern_loop
+  jh   panic
 
+  call reset_excep_count ; reset exception count
+  call step_clock        ; increment kernel clock
+  iret
+pit_region_end:
 ; Extracts bytes from the start of a string until it hits a specific byte, placing the chars before the special byte at a destination address. Destination string is terminated with a null byte.
 ; ptr r0: src string
 ; arg r1: special byte
@@ -375,13 +1133,15 @@ right_extract.end:
   ret
 
 ; Wipes video memory and resets the video cursor
-; It takes a while to finish but boo friggin who
 clearscreen:
-  ldi r0, VMEM
-  ldi r1, 0xFFFF
-  ldi r2, 0
+  ldi  r0, VMEM
+  ldi  r1, 0
+  call strlen    ; FIX: Improved speed massively by using strlen() before memset()
+  copy r1, r0
+  ldi  r0, VMEM
+  ldi  r2, 0
   call memset
-  ldi r0, 0
+  ldi  r0, 0
   call write_console_cursor
   ret
 
@@ -528,6 +1288,14 @@ strprint.end:
   clf 
   ret
 
+system_file_not_found:
+  ldi  r0, error_system_fnf
+  ldi  r4, 1
+  call printf
+  jmp  panic_die
+   
+  
+
 ; word
 console_cursor:
   dw 0
@@ -535,6 +1303,167 @@ console_cursor:
 ; dword
 kernel_clock_address:
   dd 0
+
+; Directory (sector 4) entry format, 30 bytes each, up to 34 entries:
+;    offset  size  field
+;    0       1     0xFE  (File Entry magic)
+;    1       4     start sector
+;    5       4     length in sectors
+;    9       1     0xFD  (File Descriptor magic)
+;    10      20    filename, ASCII, NUL-padded
+; Filesystem is called SSFS (Simple Sector File System)
+
+; Makes a list of present files with sizes attached and disk information
+; ptr r0: address to put the report
+gen_disk_report:
+  push r0
+  copy r23, r1
+  call qboot_ldisk
+  pop r0
+  ldi r1, 0x0F000000
+  
+gen_disk_report.loop: 
+  push r0 
+  push r1
+  push r2 
+  push r3 
+  ldi r0, text_pool
+  ldi r1, 32
+  ldi r2, 0
+  call memset
+  pop  r3
+  pop  r2
+  pop  r1
+  pop  r0
+
+  ; Step 1: get sector lengths
+  add r1, 1     ; offset 1: start sector (dword)
+  mov r2, [r1]  ; r2 = start sector
+  add r1, 4    ; offset 5: legnth in sectors (dword)
+  mov r3, [r1]  ; r3 = length in sectors
+  ; multiply r3 by 1024 to get file size
+  mul r3, 1024 ; r3 = file size
+  ; now get the name of this file
+  add r1, 5 ; offset 10 is the filename and is 20 bytes long
+  ; if there is nothing there, we have hit the last entry and are done.
+  rb r5, [r1]
+  cmp r5, 0 ; if length byte is 0, we have read the last entry and are done
+  je gen_disk_report.end
+  clf
+  copy r15, r1 ; save this since r1 gets fucked
+  add r15, 20
+  ; we have all we need, now process this part of the string
+  jmp gen_disk_report.append_str
+  
+; r3=file size, r1=file name pointer
+gen_disk_report.append_str:
+  push r0 
+  push r1
+  copy r0, r3
+  ldi r1, text_pool
+  call ascii_r0
+  pop  r1
+  pop  r0
+  ; ascii representation of file size now in text_pool
+  jmp gen_disk_report.append_str_stage2  
+
+; append file name: file size
+gen_disk_report.append_str_stage2:
+  ; r1 = file name ptr
+  rb r2, [r1]
+  cmp r2, 0
+  je gen_disk_report.append_str_stage3
+  clf
+  wb [r0], r2
+  add r1, 1
+  add r0, 1
+  jmp gen_disk_report.append_str_stage2
+
+gen_disk_report.append_str_stage3:
+  ldi r5, ':'
+  wb  [r0],r5
+  add r0, 1
+  ldi r5, ' '
+  wb  [r0],r5
+  add r0, 1
+  ldi r2, text_pool
+  gdr_internal:
+    rb r3, [r2]
+    cmp r3, 0
+    je gen_disk_report.next
+    wb [r0], r3
+    add r2, 1
+    add r0, 1
+    jmp gdr_internal
+  
+gen_disk_report.append_str_stage4:
+  ; still easier than a shitty massive loop
+  ldi r5, ' '
+  wb [r0], r5
+  add r0, 1
+  ldi r5, 'B'
+  wb [r0], r5
+  add r0, 1
+  ldi r5, 'y'
+  wb [r0], r5
+  add r0, 1
+  ldi r5, 't'
+  wb [r0], r5
+  add r0, 1
+  ldi r5, 'e'
+  wb [r0], r5
+  add r0, 1
+  ldi r5, 's'
+  wb [r0], r5
+  add r0, 1
+  ret
+
+; To be ran at the end!
+gen_disk_report.attach_disk_info:
+  ldi r1, disk_info
+  jmp gen_disk_report.attach_disk_info.loop
+  
+gen_disk_report.attach_disk_info.loop:
+  rb r2, [r1]
+  cmp r2, 0
+  je gen_disk_report.attach_disk_info.end
+  wb [r0], r2
+  add r0, 1
+  add r1, 1
+  jmp gen_disk_report.attach_disk_info.loop
+
+gen_disk_report.attach_disk_info.end:
+  clf 
+  ret
+
+gen_disk_report.next:
+  call gen_disk_report.append_str_stage4
+  ldi r5, '\n'
+  wb [r0], r5
+  add r0, 1
+  copy r1, r15
+  jmp gen_disk_report.loop
+
+gen_disk_report.end:
+  ldi r1, '\n'
+  wb [r0], r1
+  add r0, 1
+  call gen_disk_report.attach_disk_info
+  ; FIX: Clear text_pool
+  ldi r0, text_pool
+  ldi r1, 32
+  ldi r2, 0
+  call memset
+  clf
+  ret
+
+; ret r0: seconds
+time_since_PIT_sync:
+  push r1
+  ldi  r1, kernel_clock_address
+  mov  r0, [r1]
+  pop  r1
+  ret
 
 ; Makes a list of present files, seperated by a char that you give it
 ; ptr r0: address to put the list
@@ -638,6 +1567,99 @@ console_emitchar:
   call increment_console_cursor
   pop  r2
   pop  r1
+  ret
+
+; Pauses for a bit
+sleep:
+  cli
+  ldi  r0, kernel_clock_address
+  mov  r1, [r0]  
+  copy r3, r1 
+  add  r3, 2
+  sti
+  jmp sleep_loop
+
+sleep_loop:
+  ldi r0, kernel_clock_address
+  mov r1, [r0]  
+  cmp r1, r3 
+  jl sleep_loop
+  jmp sleep_end
+
+sleep_end:
+  clf
+  ret
+
+; Wrapper of qboot_write_raw_file that checks file name width 
+; ptr r0: New file name
+; arg r1: Length of sectors to populate
+; ptr r2: Memory source address
+touchfile:
+  push r0 
+  push r1 
+  push r2 
+
+  ; if it already exists, delete it
+  call qboot.file_exist
+  cmp  r0, 1
+  je   touchfile.already_exists
+  delete_return:
+    pop  r2
+    pop  r1
+    pop  r0
+    push r0 
+    push r1 
+    push r2 
+  
+    ldi  r1, 0
+    call strlen
+    cmp  r0, 19
+    jh   touchfile.reject
+    pop  r2
+    pop  r1
+    pop  r0
+    call qboot_write_raw_file
+    ret
+
+touchfile.reject:
+  pop r0
+  pop r1
+  pop r2
+  ldi r0, error_fname_len
+  ldi r1, 2
+  call journal.log
+  clf
+  ret
+  
+touchfile.already_exists:
+  pop  r2
+  pop  r1
+  pop  r0
+  push r0 
+  push r1 
+  push r2 
+  call qboot_delete_file
+  jmp delete_return
+
+; Gets the length of a string in memory until it hits a terminator
+; ptr r0: string
+; arg r1: terminator
+; ret r0: length
+strlen:
+  ldi r3, 0
+  jmp strlen.loop
+
+strlen.loop:
+  rb r2, [r0]
+  cmp r2, r1
+  je strlen.end
+  add r3, 1
+  add r0, 1
+  jmp strlen.loop
+
+strlen.end:
+  copy r0, r3
+  clf
   ret
 
 ; Reads a single ascii input stream into [r0]
@@ -832,28 +1854,65 @@ hex_r0:
 .hex_digit_done:
     ret
 
-text_pool:        dd 0, 0, 0, 0, 0, 0, 0, 0,
+text_pool:          dd 0, 0, 0, 0, 0, 0, 0, 0
+  
+error_unknown_op:   db "Unknown instruction at 0x~", 136, 0
+error_mem:          db "Memory error at instruction 0x~", 136, 0
+error_system_fnf:   db "A System file couldn't be found.", 0
 
-error_unknown_op: db "Unknown instruction at 0x~", 136, 0
-error_mem:        db "Memory error at instruction 0x~", 136, 0
-panic_msg:        db "Kernel Panic! IP=~ ERROR=^", 0
+panic_header:       db "\n===========================================================\n", 0
+panic_msg0:         db 135, "Kernel Panic!", 136, " IP=~ ERROR=^", 0
+panic_msg1:         db "regs32(* ", 0       
+panic_msg2:         db " *)", 0
+panic_msg3:         db "code(* ", 0
+panic_msg4:         db "*)", 0
+panic_msg5:         db 136, "\n===========================================================\n"
+                    db "Please force power off the machine.", 0
 
-log_file_name:    db "journal.ef", 0
-shl_file_name:    db "shell.ef", 0
+left_brack:         db ")", 0
+right_brack:        db "(", 0
 
-log_file_msg:     db "read journal.ef", 0
+error_fname_len:    db "ssfs: Filename exceeds 20 bytes!", 0
+error_alloc_name:   db "alloc: Region name exceeds 20 bytes!", 0
+  
+log_file_name:      db "journal.lib", 0
+shl_file_name:      db "shell.ef", 0
+  
+kern_region_name:   db "Kernel", 0 
+shell_region_name:  db "Shell", 0
+disk_region_name:   db "Disk Driver", 0
+boot_region_name:   db "Boot Code", 0
+bios_region_name:   db "BIOS", 0
+ivt_region_name:    db "IVT", 0
+pit_region_name:    db "PIT Idle", 0
+video_region_name:  db "Video", 0
+logger_region_name: db "Logger", 0
+  
+log_file_msg:       db "read journal.lib", 0
+  
+kernel_log0:        db "KRNL: quasix kernel v6.0.0, 256MB memory available, kernel memory 0x00010000", 0
+kernel_log1:        db "PIT: Init", 0
+kernel_log2:        db "PIT: driver ready but not yet started (ports 0x01, 0x02, irq 0x02, interval 1s)", 0
+kernel_log3:        db "IVT: mapped exceptions to their handlers", 0
+kernel_log4:        db "KRNL: starting kernel loop", 0
+kernel_log5:        db "KRNL: enabled maskable interrupts", 0
+kernel_log6:        db "PIT: await PIT sync", 0
+kernel_log7:        db "PIT: synced", 0
 
-kernel_log0:      db "KRNL: quasix kernel v4.2.1, 256MB memory available, kernel memory 0x00010000", 0
-kernel_log1:      db "PIT: Init", 0
-kernel_log2:      db "PIT: driver ready but not yet started (ports 0x01, 0x02, irq 0x02, interval 1s)", 0
-kernel_log3:      db "IVT: mapped exceptions to their handlers", 0
-kernel_log4:      db "KRNL: starting kernel loop", 0
-kernel_log5:      db "KRNL: enabled maskable interrupts", 0
-kernel_log6:      db "PIT: await PIT sync", 0
-kernel_log7:      db "PIT: synced", 0
+disk_info:
+  db "filesystem=SSFS (1024B sectors)\n"
+  db "size=512MB\n"
+  db "sectors=524288\n\n"
+  db "metadata sector: 4\nbootloader sector: 0\nstage 2 bootloader sector: 1-3"
+  db 0
 
 INPUTDATA_ADDRESS:
  dd 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+db 0xFF ; start marker so i dont have to touch alloc hell
+; Address of the allocation table
+alloc_table:
+  zerofill 512
 
 kern_endp:
 origin 0

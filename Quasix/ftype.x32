@@ -1,0 +1,65 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; Skip past 'ftype '
+ldi r0, inputbuf
+add r0, 6
+ldi r7, 0
+ldi r1, load_address      
+call qboot_load_raw_file
+cmp r0, 1
+je fnf
+
+; Case entrypoint starts with 0xAFFA: 
+ldi r0, load_address
+rw  r1, [r0]
+cmp r1, 0xFAAF ; is 0xFAAF due to little-endian reading rules
+je is_ef_file
+
+; Case else, is_ef_file checks for command file
+jmp is_raw_file
+
+is_ef_file:
+  ; Check for 0xF00D (0x0DF0 little-endian)
+  ldi r0, load_address
+  add r0, 6 ; FIX: skip over flags + entrypoint
+  rw  r1, [r0]
+  cmp r1, 0x0DF0
+  je is_com_file
+
+  ldi r0, ftype_ef_msg
+  ldi r4, 1
+  call printf 
+  ret
+
+is_com_file:
+  ldi r0, ftype_com_msg
+  ldi r4, 1
+  call printf 
+  ret
+
+is_raw_file:
+  ldi r0, ftype_raw_msg
+  ldi r4, 1
+  call printf 
+  ret
+
+fnf:
+  ldi r0, ftype_fnf_msg
+  ldi r1, inputbuf
+  add r1, 6
+  ldi r4, 1
+  call printf 
+  ret
+  
+ftype_fnf_msg:
+  db "ftype: File '~' not found", 0
+
+ftype_ef_msg:  db "Executable Format", 0
+ftype_com_msg: db "Command Executable Format", 0
+ftype_raw_msg: db "Raw", 0
+
+load_address:

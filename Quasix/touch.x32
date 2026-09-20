@@ -1,0 +1,16 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+; Skip past 'touch '
+ldi  r0, inputbuf
+add  r0, 6
+ldi  r1, 1
+ldi  r2, touch_heap_of_zeroes
+call touchfile
+ret
+
+touch_heap_of_zeroes:
+  zerofill 1024

@@ -1,0 +1,35 @@
+docompile {.x32}
+
+// Special files
+symfile   {ksym.sym}
+sinboot   {s0.x32}
+extboot   {Q-Boot.x32}
+
+// System files
+ext       {qenv32.x32,  .ef}
+ext       {journal.x32, .lib}
+ext       {shell.x32,   .ef}
+ext       {disk.x32,    .lib}
+
+// Command files
+ext       {help.x32,    NoExt}
+ext       {run.x32,     NoExt}
+ext       {ls.x32,      NoExt}
+ext       {clear.x32,   NoExt}
+ext       {echo.x32,    NoExt}
+ext       {hexdig.x32,  NoExt}
+ext       {cat.x32,     NoExt}
+ext       {dsk.x32,     NoExt}
+ext       {uptime.x32,  NoExt}
+ext       {ftype.x32,   NoExt}
+ext       {ver.x32,     NoExt}
+ext       {script.x32,  NoExt}
+ext       {rm.x32,      NoExt}
+ext       {touch.x32,   NoExt}
+ext       {sleep.x32,   NoExt}
+ext       {mem.x32,     NoExt}
+ext       {free.x32,    NoExt}
+
+// Extras
+ext       {writer.x32,  .ef}
+ext       {ports.x32,   .ef}

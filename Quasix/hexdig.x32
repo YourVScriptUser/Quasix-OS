@@ -1,3 +1,4 @@
+autonoexport
 origin 0x00060000
 db 0xAF, 0xFA
 dd 0x00060000
@@ -13,14 +14,29 @@ call qboot_load_raw_file
 cmp r0, 1
 je file_not_found
 call walk_hex
+; FIX: Clear text_pool
+ldi r0, text_pool
+ldi r1, 32
+ldi r2, 0
+call memset
 ret
 
 walk_hex:
   push r7
   ldi r2, load_addr
   xor r3, r3
+  ldi r20, 0
   jmp walk_hex.loop
+
     
+walk_hex.do_newline:
+  push r0
+  ldi r0, '\n'
+  call console_emitchar
+  ldi r20, 0
+  pop r0
+  jmp walk_hex.loop
+
 walk_hex.loop:
   rb r0, [r2]
   ldi r1, text_pool
@@ -45,6 +61,9 @@ walk_hex.loop:
   cmp r7, r3
   je walk_hex.end
   push r7
+  add r20, 1
+  cmp r20, 35
+  je walk_hex.do_newline
   jmp walk_hex.loop
 
 walk_hex.end:

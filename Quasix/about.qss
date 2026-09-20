@@ -1,0 +1,27 @@
+echo             Q U A S I X
+echo _____________________________________
+echo Copyright (C) 2026 VSK Software
+echo
+echo Quasix Operating System for the VSK-32
+echo Version:
+ver
+echo
+echo Quasix is a bare-metal minimal utility OS for the VSK-32 using the SSFS filesystem
+echo
+echo Features:
+echo  - Easy-To-Use Utility Shell
+echo  - PIT
+echo  - Executable file type
+echo  - Basic logging
+echo  - Filesystem utilites
+echo  - Shell scripting
+echo  
+echo Filesystem overview:
+echo  - qenv32.ef:    Main Quasix Kernel 
+echo  - s0.BOOT:      SSFS Boot sector (sector 0)
+echo  - Q-Boot.BOOT:  SSFS Extended boot sector (sectors 1-3)
+echo  - journal.lib:   Basic logging executable
+echo  - shell.ef:     Quasix shell 
+echo  - ksym.sym:     SSFS Symbol file
+echo  - disk.lib:      Disk read/write driver
+

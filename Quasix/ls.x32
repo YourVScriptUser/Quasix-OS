@@ -1,3 +1,4 @@
+autonoexport
 origin 0x00060000
 db 0xAF, 0xFA
 dd 0x00060000
@@ -12,9 +13,14 @@ call files_present
 ldi r0, file_list_loc
 ldi r4, 1
 call printf
+ldi r0, 136 ; FIX: Color byte was unterminated
+call console_emitchar
 ret
 
 file_list_prefix:
   db 132, 0
+
+verbose_switch:
+  db "v", 0
 
 file_list_loc:

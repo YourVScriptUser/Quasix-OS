@@ -1,3 +1,4 @@
+autonoexport
 origin 0x00005C00 ; Address of where the BIOS puts the bootloader
 
 ; Copyright VSK 2026, all rights reserved
@@ -8,7 +9,7 @@ origin 0x00005C00 ; Address of where the BIOS puts the bootloader
 region 0 ; Sector 0
 ; Main Boot Master Header
 db 0x55, 0xAA
-db "Q-Boot v4.2.1", 0
+db "Q-Boot v6.0.0", 0
 
 region 64 ; Byte offset 5C40 (Boot sector executable code offset)
 ; Load extended bootloader for the SSFS (Simple Sector File System)

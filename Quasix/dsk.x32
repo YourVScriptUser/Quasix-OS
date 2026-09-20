@@ -1,0 +1,18 @@
+autonoexport
+origin 0x00060000
+db 0xAF, 0xFA
+dd 0x00060000
+db 0xF0, 0x0D
+
+ldi r0, text_pool
+ldi r1, 32
+ldi r2, 0
+call memset
+ldi r0, disk_info_append_addr
+call gen_disk_report
+ldi r0, disk_info_append_addr
+ldi r4, 1
+call printf
+ret
+
+disk_info_append_addr:
